@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
-import { api, emptyRule, type Account, type Media, type Rule } from '../api'
+import { api, emptyRule, type Account, type Billing, type Media, type Rule } from '../api'
 import { Confirm, Empty, Spinner, Switch, useToast } from '../components/ui'
 import RuleEditor from './RuleEditor'
 
-export default function Automations({ account }: { account: Account }) {
+export default function Automations({ account, billing }: { account: Account; billing: Billing | null }) {
   const toast = useToast()
   const [rules, setRules] = useState<Rule[] | null>(null)
   const [media, setMedia] = useState<Media[] | null>(null)
@@ -53,6 +53,7 @@ export default function Automations({ account }: { account: Account }) {
         media={media}
         mediaError={mediaError}
         username={account.username}
+        plan={billing?.plan || null}
         onCancel={() => setEditing(null)}
         onSaved={() => { setEditing(null); load() }}
       />
@@ -60,21 +61,25 @@ export default function Automations({ account }: { account: Account }) {
   }
 
   const thumb = (id: string) => media?.find((m) => m.id === id)
+  const limit = billing?.plan.rules || 0
+  const full = !!limit && !!rules && rules.length >= limit
+  const create = () => (full ? toast(`Paket ${billing?.plan.name} maksimal ${limit} automasi. Upgrade di menu Langganan.`, 'error') : setEditing(emptyRule()))
 
   return (
     <>
       <div className="page-head">
         <div>
           <h1>Automasi</h1>
-          <p>Atur keyword pemicu, balasan komentar, DM, tombol, dan follow-up untuk tiap postingan.</p>
+          <p>Atur keyword pemicu, balasan komentar, DM, tombol, dan follow-up untuk tiap postingan.
+            {limit > 0 && rules && <> <b>{rules.length}/{limit}</b> automasi terpakai.</>}</p>
         </div>
-        <button className="btn primary" onClick={() => setEditing(emptyRule())}>+ Automasi baru</button>
+        <button className="btn primary" onClick={create}>+ Automasi baru</button>
       </div>
 
       {!rules ? <Spinner /> : rules.length === 0 ? (
         <Empty icon="⚡" title="Belum ada automasi">
           <p>Contoh: orang komentar <code>info</code> di post, lalu otomatis dapat DM berisi link.</p>
-          <button className="btn primary" onClick={() => setEditing(emptyRule())}>Buat automasi pertama</button>
+          <button className="btn primary" onClick={create}>Buat automasi pertama</button>
         </Empty>
       ) : (
         <div className="grid two">
@@ -128,7 +133,7 @@ export default function Automations({ account }: { account: Account }) {
 
                 <div className="row" style={{ marginTop: 'auto' }}>
                   <button className="btn sm" onClick={() => setEditing(r)}>Edit</button>
-                  <button className="btn sm" onClick={() => setEditing({ ...r, id: undefined, name: r.name + ' (salinan)', active: false })}>Duplikat</button>
+                  <button className="btn sm" onClick={() => (full ? create() : setEditing({ ...r, id: undefined, name: r.name + ' (salinan)', active: false }))}>Duplikat</button>
                   <span className="spacer" />
                   <button className="btn sm danger" onClick={() => setDeleting(r)}>Hapus</button>
                 </div>

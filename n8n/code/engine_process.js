@@ -1,10 +1,32 @@
 // Proses event webhook Instagram: cocokkan rule, balas komentar, kirim private reply / DM.
 // Panggilan Graph API dilakukan di sini (this.helpers.httpRequest) supaya urutan & fallback mudah diatur.
+//#include lib_plans.js
+const crypto = require('crypto');
 const helpers = this.helpers;
 const body = $('Webhook IG Event').first().json.body || {};
 
 const settings = {};
 for (const it of $('Baca Settings').all()) if (it.json.key) settings[it.json.key] = it.json.value ?? '';
+
+// Hanya terima event yang ditandatangani Meta (HMAC-SHA256 body mentah dengan App Secret)
+const rawIn = $('Ambil Body Mentah').first().json;
+const expected = settings.app_secret ? 'sha256=' + crypto.createHmac('sha256', settings.app_secret).update(Buffer.from(rawIn.raw || '', 'utf8')).digest('hex') : '';
+const given = String(rawIn.signature || '');
+if (!expected || !rawIn.raw || given.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(given), Buffer.from(expected))) {
+  // Dicatat maksimal sekali per 10 menit supaya tidak bisa dipakai membanjiri log
+  const sdSig = $getWorkflowStaticData('global');
+  if (Date.now() - Number(sdSig.badSigAt || 0) < 600000) return [];
+  sdSig.badSigAt = Date.now();
+  return [{ json: { kind: 'log', account_id: '', type: 'security', status: 'error', rule_id: '', rule_name: '', ig_user_id: '', username: '',
+    ref_id: '', media_id: '', text: '', error: settings.app_secret ? 'Webhook ditolak: tanda tangan X-Hub-Signature-256 tidak cocok (cek App Secret)' : 'Webhook ditolak: app_secret belum disetel' } }];
+}
+if (settings.engine_enabled === 'false') return []; // mode perawatan dari dasbor superadmin
+
+const plans = loadPlans(settings);
+const month = monthKey();
+const billingBy = latestBy($('Baca Billing').all().map(i => i.json), 'account_id');
+const usageBy = latestBy($('Baca Usage').all().map(i => i.json).filter(u => u.month === month), 'account_id');
+const usage = {}; // account_id -> { dm, ai, ai_tokens, comments, changed }
 const accounts = {};
 for (const it of $('Baca Akun').all()) if (it.json.ig_user_id) accounts[String(it.json.ig_user_id)] = it.json;
 const everyRule = $('Baca Rules').all().map(i => i.json).filter(r => r.id);
@@ -17,6 +39,8 @@ let igId = '';
 let allRules = [];
 let rules = [];
 let account = {};
+let plan = DEFAULT_PLANS[0];
+let u = null;
 
 // Dedupe: Meta bisa mengirim event yang sama lebih dari sekali
 const sd = $getWorkflowStaticData('global');
@@ -42,6 +66,10 @@ const log = (e) => out.push({ json: {
   text: String(e.text || '').slice(0, 1000),
   error: e.error ? String(e.error).slice(0, 500) : '',
 } });
+
+// Kuota DM per bulan sesuai paket; balasan komentar publik tidak dihitung
+const dmLeft = () => u.dm < Number(plan.dm || 0);
+const quotaLog = (e) => log(Object.assign({ type: 'quota', status: 'skipped', text: 'Kuota ' + e.what + ' paket ' + plan.name + ' bulan ini habis (' + e.limit + '). Upgrade di menu Langganan.' }, e));
 
 async function ig(method, path, payload, qs) {
   if (!token) return { ok: false, error: 'access_token belum diset di Pengaturan' };
@@ -103,7 +131,7 @@ async function privateReply(commentId, rule, username) {
 }
 
 function queueFollowup(rule, uid, username) {
-  if (!(rule.followup_enabled === true || rule.followup_enabled === 'true') || !rule.followup_message || !uid) return;
+  if (!isTrue(rule.followup_enabled) || !plan.followup || !rule.followup_message || !uid) return;
   const delay = Number(rule.followup_delay_min) || 60;
   out.push({ json: {
     kind: 'followup', account_id: igId, ig_user_id: uid, username, rule_id: String(rule.id),
@@ -117,6 +145,14 @@ for (const entry of body.entry || []) {
   if (!account || !account.access_token) continue; // akun belum login ke panel
   token = account.access_token;
   igId = String(account.ig_user_id);
+  const bill = billingBy[igId];
+  if (bill && isTrue(bill.suspended)) continue; // dinonaktifkan superadmin
+  plan = effectivePlan(bill, plans);
+  if (!usage[igId]) {
+    const row = usageBy[igId] || {};
+    usage[igId] = { dm: Number(row.dm) || 0, ai: Number(row.ai) || 0, ai_tokens: Number(row.ai_tokens) || 0, comments: Number(row.comments) || 0, changed: false };
+  }
+  u = usage[igId];
   allRules = everyRule.filter(r => String(r.account_id) === igId);
   rules = allRules.filter(r => r.active === true || r.active === 'true');
 
@@ -133,6 +169,7 @@ for (const entry of body.entry || []) {
     if (uid && (uid === igId || uid === String(entry.id))) continue; // komentar akun sendiri
 
     log({ type: 'comment_in', uid, username, ref: cid, media, text });
+    u.comments++; u.changed = true;
     const cand = rules.filter(r => (r.channel || 'comment') === 'comment' && postMatch(r, media));
     const rule = cand.find(r => kwMatch(r, text));
 
@@ -143,8 +180,11 @@ for (const entry of body.entry || []) {
         const r = await ig('POST', '/' + cid + '/replies', { message: reply });
         log({ type: 'comment_reply', status: r.ok ? 'ok' : 'error', rule, uid, username, ref: cid, media, text: reply, error: r.error });
       }
-      if (rule.dm_message) {
+      if (rule.dm_message && !dmLeft()) {
+        quotaLog({ what: 'DM', limit: plan.dm, rule, uid, username, ref: cid, media });
+      } else if (rule.dm_message) {
         const r = await privateReply(cid, rule, username);
+        if (r.ok) { u.dm++; u.changed = true; }
         log({ type: 'private_reply', status: r.ok ? 'ok' : 'error', rule, uid: (r.body && r.body.recipient_id) || uid, username, ref: cid, media, text: r.text, error: r.error });
         if (r.ok) queueFollowup(rule, (r.body && r.body.recipient_id) || uid, username);
       }
@@ -153,10 +193,19 @@ for (const entry of body.entry || []) {
 
     const aiRule = cand.find(r => r.ai_fallback === true || r.ai_fallback === 'true');
     if (aiRule && account.ai_enabled !== false && settings.gemini_enabled !== 'false' && text.trim()) {
+      if (!(u.ai < Number(plan.ai || 0))) {
+        if (Number(plan.ai || 0) > 0) quotaLog({ what: 'balasan AI', limit: plan.ai, rule: aiRule, uid, username, ref: cid, media });
+        continue;
+      }
+      const persona = (plan.persona && account.ai_persona) || settings.gemini_persona || '';
+      u.ai++;
+      // Estimasi token (±4 karakter/token): prompt + jawaban maks ~150 token
+      u.ai_tokens += Math.ceil((persona.length + String(aiRule.ai_context || '').length + text.length + 400) / 4) + 150;
+      u.changed = true;
       out.push({ json: {
         kind: 'ai', account_id: igId, comment_id: cid, ig_user_id: uid, username, media_id: media, comment_text: text,
         rule_id: String(aiRule.id), rule_name: aiRule.name || '', ai_context: aiRule.ai_context || '',
-        persona: account.ai_persona || settings.gemini_persona || '',
+        persona,
       } });
     }
   }
@@ -193,12 +242,17 @@ for (const entry of body.entry || []) {
       quick = rule ? buttonFor(rule) : undefined;
     }
     if (!rule || !reply) continue;
+    if (!dmLeft()) { quotaLog({ what: 'DM', limit: plan.dm, rule, uid, username, ref: mid }); continue; }
 
     const message = quick ? { text: fill(reply, username), quick_replies: quick } : { text: fill(reply, username) };
     const r = await ig('POST', '/' + (igId || 'me') + '/messages', { recipient: { id: uid }, message });
+    if (r.ok) { u.dm++; u.changed = true; }
     log({ type: 'dm_out', status: r.ok ? 'ok' : 'error', rule, uid, username, ref: mid, text: message.text, error: r.error });
     if (r.ok && !payload) queueFollowup(rule, uid, username);
   }
 }
 
+for (const [id, x] of Object.entries(usage)) {
+  if (x.changed) out.push({ json: { kind: 'usage', account_id: id, month, dm: x.dm, ai: x.ai, ai_tokens: x.ai_tokens, comments: x.comments } });
+}
 return out;

@@ -1,10 +1,11 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { api, LOGIN_URL, type Account, type Profile } from '../api'
+import { api, LOGIN_URL, type Account, type Billing, type Profile } from '../api'
 import { Field, Spinner, Switch, useToast } from '../components/ui'
+import { InstallCard } from '../components/Install'
 
 type Sub = { subscribed_fields: string[] }
 
-export default function SettingsPage({ account, reload, logout }: { account: Account; reload: () => Promise<Account>; logout: () => void }) {
+export default function SettingsPage({ account, billing, reload, logout }: { account: Account; billing: Billing | null; reload: () => Promise<Account>; logout: () => void }) {
   const toast = useToast()
   const [busy, setBusy] = useState('')
   const [profile, setProfile] = useState<Profile | null>(null)
@@ -33,6 +34,7 @@ export default function SettingsPage({ account, reload, logout }: { account: Acc
   const connected = !statusError
   const listening = !!subs?.includes('comments') && !!subs?.includes('messages')
   const expires = account.token_expires_at ? new Date(account.token_expires_at) : null
+  const canPersona = !billing || billing.plan.persona
 
   return (
     <>
@@ -86,13 +88,17 @@ export default function SettingsPage({ account, reload, logout }: { account: Acc
             <p className="card-sub" style={{ margin: 0 }}>Menjawab komentar yang tidak cocok keyword di automasi yang menyalakan "Balasan AI".</p>
           </div>
           <Switch checked={ai} onChange={setAi} label={ai ? 'AI aktif' : 'AI dimatikan'} />
-          <Field label="Gaya bahasa AI" hint="Tulis seperti memberi arahan ke admin baru. Contoh: sapa dengan 'kak', maksimal 2 kalimat, jangan sebut harga.">
-            <textarea className="input" rows={5} value={persona} onChange={(e) => setPersona(e.target.value)} />
+          <Field label="Gaya bahasa AI" hint={canPersona
+            ? "Tulis seperti memberi arahan ke admin baru. Contoh: sapa dengan 'kak', maksimal 2 kalimat, jangan sebut harga."
+            : <>Persona sendiri tersedia mulai paket Pro. Sekarang memakai gaya bawaan Wanychat. <a href="#/billing">Lihat paket</a></>}>
+            <textarea className="input" rows={5} value={persona} disabled={!canPersona} onChange={(e) => setPersona(e.target.value)} />
           </Field>
-          <button className="btn primary" disabled={!!busy} onClick={() => run('ai', async () => { await api('settings.save', { ai_enabled: ai, ai_persona: persona }); await reload() }, 'Pengaturan AI tersimpan')}>
+          <button className="btn primary" disabled={!!busy} onClick={() => run('ai', async () => { await api('settings.save', canPersona ? { ai_enabled: ai, ai_persona: persona } : { ai_enabled: ai }); await reload() }, 'Pengaturan AI tersimpan')}>
             {busy === 'ai' ? <Spinner /> : 'Simpan'}
           </button>
         </section>
+
+        <InstallCard />
       </div>
     </>
   )

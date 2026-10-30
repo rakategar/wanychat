@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
-import { api, type Account, type EventRow, type Profile, type Rule } from '../api'
+import { api, type Account, type Billing, type EventRow, type Profile, type Rule } from '../api'
 import type { Page } from '../App'
 import { EVENT_META, Spinner, timeAgo } from '../components/ui'
+import { Meter } from './Billing'
 
 type Sub = { subscribed_fields: string[] }
 
-export default function Dashboard({ account, go }: { account: Account; go: (p: Page) => void }) {
+export default function Dashboard({ account, billing, go }: { account: Account; billing: Billing | null; go: (p: Page) => void }) {
   const [events, setEvents] = useState<EventRow[] | null>(null)
   const [rules, setRules] = useState<Rule[]>([])
   const [profile, setProfile] = useState<Profile | null>(null)
@@ -78,6 +79,19 @@ export default function Dashboard({ account, go }: { account: Account; go: (p: P
         <Stat n={stats.errors} label="Error" tint={stats.errors ? 'pink' : ''} loading={!events} />
       </div>
 
+      {billing && (
+        <section className="card quota-card" style={{ marginBottom: 24 }}>
+          <div className="row between">
+            <h2 className="card-title" style={{ margin: 0 }}>Kuota paket {billing.plan.name}</h2>
+            <button className="btn sm" onClick={() => go('billing')}>{billing.plan.id === 'free' ? 'Upgrade' : 'Kelola'}</button>
+          </div>
+          <div className="grid quota-grid">
+            <Meter label="DM bulan ini" used={billing.usage.dm} limit={billing.plan.dm} />
+            <Meter label="Balasan AI" used={billing.usage.ai} limit={billing.plan.ai} none="Mulai paket Kreator" />
+          </div>
+        </section>
+      )}
+
       <div className="grid two">
         <section className="card">
           <h2 className="card-title">Status sistem</h2>
@@ -106,7 +120,7 @@ export default function Dashboard({ account, go }: { account: Account; go: (p: P
               {events.slice(0, 7).map((e) => {
                 const m = EVENT_META[e.type] || { label: e.type, color: '', icon: '•' }
                 return (
-                  <div key={e.id} className="row" style={{ padding: '8px 0', borderBottom: '2px solid rgba(17,17,17,.1)', flexWrap: 'nowrap' }}>
+                  <div key={e.id} className="row mini-feed" style={{ flexWrap: 'nowrap' }}>
                     <span aria-hidden>{m.icon}</span>
                     <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       <b>{e.username ? '@' + e.username : m.label}</b> <span className="muted">{e.text}</span>
@@ -121,8 +135,8 @@ export default function Dashboard({ account, go }: { account: Account; go: (p: P
         </section>
 
         <section className="card tint-purple" style={{ gridColumn: '1 / -1' }}>
-          <h2 className="card-title">Cara kerjanya (seperti ManyChat)</h2>
-          <div className="grid stats" style={{ marginTop: 12 }}>
+          <h2 className="card-title">Cara kerjanya</h2>
+          <div className="grid how" style={{ marginTop: 12 }}>
             <HowStep n={1} title="Orang komentar keyword" desc="Siapa saja, walau belum pernah DM akunmu." />
             <HowStep n={2} title="Balas komentar + DM pertama" desc="Private reply: 1 DM per komentar, maksimal 7 hari setelah komentar." />
             <HowStep n={3} title="Dia tekan tombol" desc="Ini membuka jendela chat 24 jam." />

@@ -1,3 +1,5 @@
+import type { Plan } from './plans'
+
 // Client for the "Wanychat · Admin API" webhook in n8n (proxied as /api by Vite locally, by vercel.json in production)
 
 export type Channel = 'comment' | 'dm'
@@ -86,19 +88,54 @@ export interface Profile {
   media_count?: number
 }
 
+export interface Billing {
+  plan: Plan
+  subscribed_plan: string
+  status: string
+  period_end: string
+  auto_renew: boolean
+  cancel_at_period_end: boolean
+  card_hint: string
+  source: string
+  usage: { dm: number; ai: number }
+  month: string
+  rules_used: number
+}
+
+export interface Payment {
+  order_id: string
+  plan: string
+  amount: number
+  status: string
+  payment_type: string
+  kind: string
+  paid_at: string | null
+  createdAt: string
+}
+
 // Login lewat Instagram: n8n memasang cookie sesi HttpOnly, browser mengirimnya otomatis ke /api
 export const LOGIN_URL = '/webhook/wany-login'
 
 export class ApiError extends Error {
+  data?: Record<string, unknown>
   constructor(message: string, public status: number) { super(message) }
 }
 
 export async function api<T = Record<string, unknown>>(action: string, payload?: unknown): Promise<T> {
+  return post<T>('/api', {}, action, payload)
+}
+
+// API superadmin: cookie wany_sa (Path=/sa-api, SameSite=Strict) + header khusus anti-CSRF
+export async function saApi<T = Record<string, unknown>>(action: string, payload?: unknown): Promise<T> {
+  return post<T>('/sa-api', { 'x-wany-sa': '1' }, action, payload)
+}
+
+async function post<T>(url: string, headers: Record<string, string>, action: string, payload?: unknown): Promise<T> {
   let res: Response
   try {
-    res = await fetch('/api', {
+    res = await fetch(url, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', ...headers },
       credentials: 'same-origin',
       body: JSON.stringify({ action, payload }),
     })
@@ -111,7 +148,7 @@ export async function api<T = Record<string, unknown>>(action: string, payload?:
   } catch {
     throw new ApiError(`Server sedang bermasalah (HTTP ${res.status}). Coba lagi sebentar lagi.`, res.status)
   }
-  if (!data.ok) throw new ApiError(data.error || 'Permintaan gagal', res.status)
+  if (!data.ok) throw Object.assign(new ApiError(data.error || 'Permintaan gagal', res.status), { data })
   return data as T
 }
 

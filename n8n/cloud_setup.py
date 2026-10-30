@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Sekali jalan: buat Data Table wany_* di n8n cloud dan salin data dari n8n lokal.
+"""Buat Data Table wany_* yang belum ada di n8n cloud; saat pertama kali juga salin data dari n8n lokal.
 
   python3 cloud_setup.py https://wanychat.remot.in
 
@@ -35,6 +35,18 @@ COLUMNS = {
                  'access_token': 'string', 'token_expires_at': 'date', 'token_refresh_error': 'string',
                  'ai_enabled': 'boolean', 'ai_persona': 'string', 'connected_at': 'date'},
     'sessions': {'token': 'string', 'ig_user_id': 'string', 'expires_at': 'date'},
+    # langganan & superadmin
+    'billing': {'account_id': 'string', 'plan': 'string', 'status': 'string', 'period_end': 'date',
+                'subscription_id': 'string', 'subscription_name': 'string', 'cancel_at_period_end': 'boolean',
+                'suspended': 'boolean', 'source': 'string', 'card_hint': 'string', 'last_order_id': 'string',
+                'note': 'string'},
+    'payments': {'order_id': 'string', 'account_id': 'string', 'plan': 'string', 'amount': 'number', 'status': 'string',
+                 'payment_type': 'string', 'kind': 'string', 'transaction_id': 'string', 'paid_at': 'date',
+                 'fee': 'number', 'note': 'string'},
+    'usage': {'account_id': 'string', 'month': 'string', 'dm': 'number', 'ai': 'number', 'ai_tokens': 'number',
+              'comments': 'number'},
+    'admin_sessions': {'token_hash': 'string', 'expires_at': 'date', 'ip': 'string', 'ua': 'string'},
+    'audit': {'actor': 'string', 'action': 'string', 'target': 'string', 'detail': 'string', 'ip': 'string'},
 }
 # Kunci settings yang masih dipakai kode; sisanya warisan versi Telegram
 KEEP_SETTINGS = ['graph_version', 'gemini_enabled', 'gemini_persona', 'app_secret', 'ig_app_id']

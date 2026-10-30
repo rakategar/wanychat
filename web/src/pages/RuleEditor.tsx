@@ -1,17 +1,19 @@
 import { useState, type KeyboardEvent, type ReactNode } from 'react'
 import { api, type MatchMode, type Media, type Rule } from '../api'
 import { Field, Segmented, Spinner, Switch, useToast } from '../components/ui'
+import type { Plan } from '../plans'
 
 interface Props {
   initial: Rule
   media: Media[] | null
   mediaError: string
   username: string
+  plan: Plan | null
   onCancel: () => void
   onSaved: () => void
 }
 
-export default function RuleEditor({ initial, media, mediaError, username, onCancel, onSaved }: Props) {
+export default function RuleEditor({ initial, media, mediaError, username, plan, onCancel, onSaved }: Props) {
   const toast = useToast()
   const [r, setR] = useState<Rule>(initial)
   const [busy, setBusy] = useState(false)
@@ -45,6 +47,9 @@ export default function RuleEditor({ initial, media, mediaError, username, onCan
   const variants = r.comment_replies.split('\n').map((s) => s.trim()).filter(Boolean)
   const sample = (tpl: string) => tpl.replace(/\{username\}/gi, '@pembeli').replace(/\{nama\}/gi, 'pembeli')
   const firstKeyword = r.keywords.split(',')[0]?.trim() || 'info'
+  const canFollowup = !plan || plan.followup
+  const canAi = !plan || plan.ai > 0
+  const locked = (what: string) => <p className="hint"><span className="badge orange">Kreator+</span> {what} tersedia mulai paket Kreator. <a href="#/billing">Lihat paket</a></p>
 
   return (
     <>
@@ -53,8 +58,9 @@ export default function RuleEditor({ initial, media, mediaError, username, onCan
           <button className="btn sm ghost" onClick={onCancel} style={{ marginLeft: -10, marginBottom: 6 }}>← Kembali</button>
           <h1>{initial.id ? 'Edit automasi' : 'Automasi baru'}</h1>
         </div>
-        <div className="row">
+        <div className="row save-bar">
           <Switch checked={r.active} onChange={(v) => set('active', v)} label={r.active ? 'Aktif' : 'Nonaktif'} />
+          <span className="spacer" />
           <button className="btn" onClick={onCancel}>Batal</button>
           <button className="btn primary" onClick={save} disabled={busy}>{busy ? <Spinner /> : 'Simpan'}</button>
         </div>
@@ -142,8 +148,8 @@ export default function RuleEditor({ initial, media, mediaError, username, onCan
             </div>
           </Section>
 
-          <Section n={r.channel === 'comment' ? 5 : 3} title="Follow-up" right={<Switch checked={r.followup_enabled} onChange={(v) => set('followup_enabled', v)} />}>
-            {r.followup_enabled ? (
+          <Section n={r.channel === 'comment' ? 5 : 3} title="Follow-up" right={<Switch checked={r.followup_enabled} disabled={!canFollowup && !r.followup_enabled} onChange={(v) => set('followup_enabled', v)} />}>
+            {!canFollowup ? locked('Follow-up') : r.followup_enabled ? (
               <>
                 <Field label="Kirim setelah (menit)" hint="Dihitung dari DM pertama. Maksimal 1380 menit (23 jam).">
                   <input className="input" type="number" min={1} max={1380} value={r.followup_delay_min} onChange={(e) => set('followup_delay_min', Number(e.target.value))} style={{ maxWidth: 160 }} />
@@ -157,8 +163,8 @@ export default function RuleEditor({ initial, media, mediaError, username, onCan
           </Section>
 
           {r.channel === 'comment' && (
-            <Section n={6} title="Balasan AI (Gemini)" right={<Switch checked={r.ai_fallback} onChange={(v) => set('ai_fallback', v)} />}>
-              {r.ai_fallback ? (
+            <Section n={6} title="Balasan AI" right={<Switch checked={r.ai_fallback} disabled={!canAi && !r.ai_fallback} onChange={(v) => set('ai_fallback', v)} />}>
+              {!canAi ? locked('Balasan AI') : r.ai_fallback ? (
                 <Field label="Konteks produk untuk AI" hint="Komentar di post ini yang TIDAK cocok keyword akan dijawab AI di kolom komentar berdasarkan konteks ini.">
                   <textarea className="input" rows={4} value={r.ai_context} onChange={(e) => set('ai_context', e.target.value)} placeholder="Nama produk, harga, cara order, jadwal, FAQ…" />
                 </Field>

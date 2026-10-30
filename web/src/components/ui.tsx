@@ -1,10 +1,15 @@
-import { createContext, useCallback, useContext, useState, type ReactNode } from 'react'
+import { cloneElement, createContext, isValidElement, useCallback, useContext, useId, useState, type ReactElement, type ReactNode } from 'react'
 
+// Label otomatis terhubung ke input tunggal di dalamnya (aksesibilitas & klik label)
 export function Field(props: { label: string; hint?: ReactNode; children: ReactNode; htmlFor?: string }) {
+  const auto = useId()
+  const child = props.children
+  const single = isValidElement(child) && ['input', 'textarea', 'select'].includes(child.type as string)
+  const id = props.htmlFor || (single ? ((child as ReactElement<{ id?: string }>).props.id || auto) : undefined)
   return (
     <div className="field">
-      <label htmlFor={props.htmlFor}>{props.label}</label>
-      {props.children}
+      <label htmlFor={id}>{props.label}</label>
+      {single && !props.htmlFor ? cloneElement(child as ReactElement<{ id?: string }>, { id }) : child}
       {props.hint && <p className="hint">{props.hint}</p>}
     </div>
   )
@@ -59,15 +64,15 @@ export function Empty(props: { icon: string; title: string; children?: ReactNode
   )
 }
 
-export function Confirm(props: { title: string; body: ReactNode; confirmLabel: string; onConfirm: () => void; onCancel: () => void }) {
+export function Confirm(props: { title: string; body: ReactNode; confirmLabel: string; onConfirm: () => void; onCancel: () => void; tone?: 'danger' | 'primary' }) {
   return (
     <div className="overlay" role="dialog" aria-modal="true" onClick={props.onCancel}>
       <div className="card modal stack" onClick={(e) => e.stopPropagation()}>
         <h3 className="card-title">{props.title}</h3>
         <div className="muted">{props.body}</div>
-        <div className="row" style={{ justifyContent: 'flex-end' }}>
+        <div className="row modal-actions">
           <button className="btn" onClick={props.onCancel}>Batal</button>
-          <button className="btn danger" onClick={props.onConfirm} autoFocus>{props.confirmLabel}</button>
+          <button className={'btn ' + (props.tone === 'primary' ? 'dark' : 'danger')} onClick={props.onConfirm} autoFocus>{props.confirmLabel}</button>
         </div>
       </div>
     </div>
@@ -122,6 +127,8 @@ export const EVENT_META: Record<string, { label: string; color: string; icon: st
   dm_out: { label: 'DM terkirim', color: 'pink', icon: '📤' },
   ai_reply: { label: 'Balasan AI', color: 'green', icon: '✨' },
   followup: { label: 'Follow-up', color: 'orange', icon: '⏰' },
+  quota: { label: 'Kuota habis', color: 'orange', icon: '⛔' },
+  security: { label: 'Keamanan', color: 'red', icon: '🛡️' },
 }
 
 export function Brand({ size = 20 }: { size?: number }) {

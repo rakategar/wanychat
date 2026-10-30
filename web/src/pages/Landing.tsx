@@ -1,41 +1,18 @@
+import { useEffect, useState } from 'react'
 import { LOGIN_URL } from '../api'
 import { Brand } from '../components/ui'
+import { InstallButton } from '../components/Install'
+import { DEFAULT_PLANS, fmt, loadPublicPlans, planFeatures, rupiahShort, type Plan } from '../plans'
 
 // Halaman publik: tidak memanggil API sama sekali (setiap panggilan = 1 eksekusi n8n)
 
-type Plan = {
-  name: string
-  price: string
-  per?: string
-  tag?: string
-  tint: string
-  pitch: string
-  features: string[]
-  cta: string
+// Tampilan per paket; harga & kuota dari /plans.json (diatur superadmin), cadangan DEFAULT_PLANS
+const LOOK: Record<string, { tint: string; pitch: string; tag?: string }> = {
+  free: { tint: '', pitch: 'Coba dulu, tanpa kartu kredit.' },
+  kreator: { tint: 'tint-blue', pitch: 'Untuk kreator & toko yang baru jalan.' },
+  pro: { tint: 'tint-yellow', pitch: 'Untuk jualan harian & launching.', tag: 'Paling laris' },
+  bisnis: { tint: 'tint-pink', pitch: 'Untuk brand dengan volume DM tinggi.' },
 }
-
-const PLANS: Plan[] = [
-  {
-    name: 'Gratis', price: 'Rp 0', tint: '', pitch: 'Coba dulu, tanpa kartu kredit.',
-    features: ['1 akun Instagram', '3 automasi', '100 DM otomatis / bulan', 'Balas komentar + DM + tombol'],
-    cta: 'Mulai gratis',
-  },
-  {
-    name: 'Kreator', price: 'Rp 49rb', per: '/bulan', tint: 'tint-blue', pitch: 'Untuk kreator & toko yang baru jalan.',
-    features: ['1 akun Instagram', 'Automasi tanpa batas', '1.000 DM otomatis / bulan', 'Follow-up DM', '300 balasan AI / bulan'],
-    cta: 'Pilih Kreator',
-  },
-  {
-    name: 'Pro', price: 'Rp 99rb', per: '/bulan', tag: 'Paling laris', tint: 'tint-yellow', pitch: 'Untuk jualan harian & launching.',
-    features: ['1 akun Instagram', 'Automasi tanpa batas', '5.000 DM otomatis / bulan', 'Follow-up DM', '2.000 balasan AI / bulan', 'Persona AI sesuai brand'],
-    cta: 'Pilih Pro',
-  },
-  {
-    name: 'Bisnis', price: 'Rp 249rb', per: '/bulan', tint: 'tint-pink', pitch: 'Untuk agensi & brand dengan banyak akun.',
-    features: ['3 akun Instagram', 'Automasi tanpa batas', '20.000 DM otomatis / bulan', '10.000 balasan AI / bulan', 'Bantuan prioritas via WhatsApp'],
-    cta: 'Pilih Bisnis',
-  },
-]
 
 const FEATURES = [
   { icon: '💬', tint: 'tint-blue', title: 'Komentar jadi DM', desc: 'Orang komentar "info", "mau", atau "harga", langsung dapat DM. Walau belum pernah chat kamu.' },
@@ -46,9 +23,9 @@ const FEATURES = [
   { icon: '🔒', tint: 'tint-blue', title: 'Login Instagram resmi', desc: 'Pakai login resmi Instagram. Tanpa password, tanpa token, tanpa setelan teknis.' },
 ]
 
-const COMPARE: [string, string, string][] = [
-  ['Harga paket menengah', 'Rp 99rb / bulan', '± Rp 480rb / bulan (Pro, $29)'],
-  ['Balasan AI', 'Termasuk (2.000 / bulan)', 'Add-on berbayar terpisah'],
+const compare = (pro: Plan): [string, string, string][] => [
+  ['Harga paket menengah', `${rupiahShort(pro.price)} / bulan`, '± Rp 480rb / bulan (Pro, $29)'],
+  ['Balasan AI', `Termasuk (${fmt(pro.ai)} / bulan)`, 'Add-on berbayar terpisah'],
   ['Bahasa & bantuan', 'Bahasa Indonesia', 'Bahasa Inggris'],
   ['Mata uang', 'Rupiah', 'Dolar AS (USD)'],
 ]
@@ -74,7 +51,11 @@ const FAQ = [
   },
   {
     q: 'Bisa berhenti kapan saja?',
-    a: <>Bisa. Paket bulanan, tanpa kontrak. Turun ke paket Gratis kapan saja.</>,
+    a: <>Bisa. Paket berbayar diperpanjang otomatis tiap bulan lewat Midtrans, dan bisa kamu hentikan kapan saja dari menu Langganan. Paket tetap aktif sampai akhir periode.</>,
+  },
+  {
+    q: 'Bisa dipasang di HP seperti aplikasi?',
+    a: <>Bisa. Buka Wanychat di Chrome (Android) lalu pilih <b>Pasang aplikasi</b>, atau di Safari (iPhone) tekan <b>Bagikan → Tambah ke Layar Utama</b>.</>,
   },
 ]
 
@@ -92,6 +73,10 @@ function IgButton({ label, className = '' }: { label: string; className?: string
 }
 
 export default function Landing({ error, signedIn }: { error?: string; signedIn: boolean }) {
+  const [plans, setPlans] = useState<Plan[]>(DEFAULT_PLANS)
+  useEffect(() => { loadPublicPlans().then(setPlans) }, [])
+  const pro = plans.find((p) => p.id === 'pro') || plans[plans.length - 1]
+  const cta = (p: Plan) => (signedIn ? (p.price ? '#/billing' : '#/dashboard') : LOGIN_URL)
   return (
     <div className="landing">
       <header className="lp-nav">
@@ -115,11 +100,11 @@ export default function Landing({ error, signedIn }: { error?: string; signedIn:
             tulis keyword, selesai. Fitur seperti ManyChat, harga mulai Rp 0.
           </p>
           {error && <div className="callout pink" role="alert">{error}</div>}
-          <div className="row" style={{ gap: 14 }}>
+          <div className="row hero-cta">
             <IgButton label="Mulai gratis dengan Instagram" />
             <a className="btn" href="#harga">Lihat harga</a>
           </div>
-          <p className="hint">Untuk akun Instagram Kreator atau Bisnis. Tanpa kartu kredit.</p>
+          <p className="hint">Untuk akun Instagram Kreator atau Bisnis. Tanpa kartu kredit. <InstallButton className="linklike" /></p>
         </div>
 
         <div className="phone lp-phone" aria-label="Contoh percakapan otomatis">
@@ -164,20 +149,25 @@ export default function Landing({ error, signedIn }: { error?: string; signedIn:
         <h2>Harga jujur, dalam Rupiah</h2>
         <p className="lead" style={{ marginTop: -8 }}>Mulai gratis. Naik paket kalau DM-nya sudah ramai.</p>
         <div className="grid lp-plans">
-          {PLANS.map((p) => (
-            <article key={p.name} className={'card plan ' + p.tint + (p.tag ? ' featured' : '')}>
-              {p.tag && <span className="badge dark plan-tag">{p.tag}</span>}
-              <h3>{p.name}</h3>
-              <div className="plan-price">{p.price}<span>{p.per}</span></div>
-              <p className="small">{p.pitch}</p>
-              <ul className="plan-list">
-                {p.features.map((f) => <li key={f}>{f}</li>)}
-              </ul>
-              <a className={'btn ' + (p.tag ? 'dark' : '')} href={LOGIN_URL} style={{ marginTop: 'auto', justifyContent: 'center' }}>{p.cta}</a>
-            </article>
-          ))}
+          {plans.map((p) => {
+            const look = LOOK[p.id] || { tint: '', pitch: '' }
+            return (
+              <article key={p.id} className={'card plan ' + look.tint + (look.tag ? ' featured' : '')}>
+                {look.tag && <span className="badge dark plan-tag">{look.tag}</span>}
+                <h3>{p.name}</h3>
+                <div className="plan-price">{rupiahShort(p.price)}<span>{p.price ? '/bulan' : ''}</span></div>
+                {look.pitch && <p className="small">{look.pitch}</p>}
+                <ul className="plan-list">
+                  {planFeatures(p).map((f) => <li key={f}>{f}</li>)}
+                </ul>
+                <a className={'btn ' + (look.tag ? 'dark' : '')} href={cta(p)} style={{ marginTop: 'auto' }}>
+                  {p.price ? 'Pilih ' + p.name : 'Mulai gratis'}
+                </a>
+              </article>
+            )
+          })}
         </div>
-        <p className="hint" style={{ marginTop: 16 }}>Harga per akun per bulan, sudah termasuk biaya server dan AI.</p>
+        <p className="hint" style={{ marginTop: 16 }}>Harga per akun Instagram per bulan, sudah termasuk biaya server dan AI. Diperpanjang otomatis, bisa dihentikan kapan saja.</p>
 
         <div className="card lp-compare">
           <h3 style={{ marginTop: 0 }}>Wanychat vs ManyChat</h3>
@@ -185,7 +175,7 @@ export default function Landing({ error, signedIn }: { error?: string; signedIn:
             <table>
               <thead><tr><th></th><th>Wanychat</th><th>ManyChat</th></tr></thead>
               <tbody>
-                {COMPARE.map(([k, a, b]) => (
+                {compare(pro).map(([k, a, b]) => (
                   <tr key={k}><td>{k}</td><td><b>{a}</b></td><td className="muted">{b}</td></tr>
                 ))}
               </tbody>

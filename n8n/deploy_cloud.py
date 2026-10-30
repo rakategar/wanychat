@@ -4,8 +4,8 @@
   TARGET=cloud python3 build.py && python3 deploy_cloud.py
 
 - Belum ada di cloud -> dibuat (SDK kode berisi trigger pertama) lalu node & koneksi lain ditambah via update_workflow.
-- Sudah ada (ID di targets.json) -> parameter tiap node diganti (cukup untuk perubahan kode/isi node).
-  Kalau struktur node/koneksi berubah, arsipkan workflow-nya di n8n, hapus ID-nya dari targets.json, lalu jalankan lagi.
+- Sudah ada (ID di targets.json) -> semua node & koneksi draft diganti dengan versi baru (ID workflow & riwayat tetap),
+  lalu dipublish. Versi aktif lama tetap melayani webhook sampai publish selesai.
 """
 import json
 import sys
@@ -40,7 +40,14 @@ def create(client, wf):
         'versionName': 'Migrasi dari n8n lokal', 'description': 'Wanychat: ' + wf['name'].split('·')[-1].strip()})
     wid = json.loads(res).get('workflowId') or json.loads(res)['id']
 
-    ops = [node_op(n) for n in wf['nodes'] if n['name'] != first['name']]
+    for b in batches(graph_ops(wf, skip=first['name'])):
+        client.call('update_workflow', {'workflowId': wid, 'operations': b})
+    return wid
+
+
+def graph_ops(wf, skip=None):
+    """addNode (kecuali `skip`) + setelan node + semua koneksi + setelan workflow."""
+    ops = [node_op(n) for n in wf['nodes'] if n['name'] != skip]
     for n in wf['nodes']:
         st = {k: n[k] for k in SETTING_KEYS if k in n}
         if st:
@@ -56,15 +63,13 @@ def create(client, wf):
                     ops.append(op)
     ops.append({'type': 'setWorkflowSettings', 'settings': {
         'timezone': wf['settings'].get('timezone', 'Asia/Jakarta'), 'executionOrder': 'v1'}})
-    # urutan: semua addNode dulu, baru settings & koneksi
-    for b in batches(ops):
-        client.call('update_workflow', {'workflowId': wid, 'operations': b})
-    return wid
+    return ops  # urutan: semua addNode dulu, baru settings & koneksi
 
 
 def update(client, wid, wf):
-    ops = [{'type': 'updateNodeParameters', 'nodeName': n['name'], 'parameters': n['parameters'], 'replace': True}
-           for n in wf['nodes']]
+    cur = json.loads(client.call('get_workflow_details', {'workflowId': wid}))['workflow']
+    names = [n['name'] for n in cur.get('nodes', [])]
+    ops = [{'type': 'removeNode', 'nodeName': name} for name in names] + graph_ops(wf)
     for b in batches(ops):
         client.call('update_workflow', {'workflowId': wid, 'operations': b})
 

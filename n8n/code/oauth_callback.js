@@ -11,7 +11,7 @@ const s = {};
 for (const it of $('Baca Settings Callback').all()) if (it.json.key) s[it.json.key] = it.json.value ?? '';
 const base = String(s.public_url || '').replace(/\/$/, '');
 const G = 'https://graph.instagram.com/' + (s.graph_version || 'v23.0');
-const fail = (msg) => [{ json: { ok: false, location: base + '/#/login?error=' + encodeURIComponent(msg) } }];
+const fail = (msg) => [{ json: { ok: false, location: base + '/#/login?error=' + encodeURIComponent(String(msg).slice(0, 200)) } }];
 
 if (q.error) return fail(q.error_description || q.error_reason || 'Login dibatalkan');
 if (!q.code) return fail('Kode login tidak ditemukan, coba lagi.');
@@ -53,6 +53,9 @@ const igId = String(me.body.user_id || sb.user_id || me.body.id);
 const sub = await call({ method: 'POST', url: G + '/me/subscribed_apps', qs: { subscribed_fields: 'comments,messages,messaging_postbacks', access_token: token }, json: true });
 
 const existing = $('Baca Akun Callback').all().map(i => i.json).find(a => String(a.ig_user_id) === igId);
+const bill = $('Baca Billing Callback').all().map(i => i.json).filter(b => String(b.account_id) === igId).sort((a, b) => Number(b.id) - Number(a.id))[0];
+if (bill && (bill.suspended === true || bill.suspended === 'true')) return fail('Akun ini dinonaktifkan. Hubungi admin Wanychat.');
+if (!existing && s.signup_open === 'false') return fail('Pendaftaran akun baru sedang ditutup sementara.');
 return [{ json: {
   ok: true,
   location: base + '/#/dashboard' + (sub.ok ? '' : '?warn=' + encodeURIComponent('Webhook belum berlangganan: ' + sub.error)),
