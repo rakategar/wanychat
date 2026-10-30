@@ -20,7 +20,10 @@
     "mcp": "n8n-cloud",
     "projectId": "NeafQxF71yhfAYMc",
     "followupEveryMin": 30,
-    "deepseek": null,
+    "deepseek": {
+      "id": "32AS2W3sM2HKKHJQ",
+      "name": "DeepSeek account"
+    },
     "tables": {
       "settings": "xmZamhHlZnZpzHBT",
       "rules": "Qj1LSRovcJ8ZWuuG",

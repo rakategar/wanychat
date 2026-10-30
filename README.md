@@ -3,7 +3,7 @@
 Auto-DM and auto-reply for Instagram comments, ManyChat-style. Users "Masuk dengan Instagram" with no keys to fill in, write a keyword, and every commenter automatically gets a DM with a button, then the link, a follow-up, and AI replies.
 
 ```
-Browser ──▶ Vercel (web/, Vite+React)          https://wanychat.vercel.app
+Browser ──▶ Vercel (web/, Vite+React)          https://wanychat.remot.in
               │  /api                ─rewrite─▶ n8n cloud /webhook/wany-api     (Wanychat · Admin API)
               │  /webhook/wany-*     ─rewrite─▶ n8n cloud /webhook/wany-login|oauth
 Meta webhook ─────────────────────────────────▶ n8n cloud /webhook/wany-ig      (Wanychat · Engine)
@@ -40,11 +40,11 @@ TARGET=cloud python3 build.py && python3 deploy_cloud.py   # changes node parame
 If you change the node structure or connections, archive the workflow in n8n, remove its ID from `targets.json` → `cloud.workflows`, then run it again.
 MCP token for n8n cloud: `~/.config/wanychat/n8n-cloud.json` → `{"url": ".../mcp-server/http", "token": "..."}` (chmod 600).
 
-Initial setup, already done: `python3 cloud_setup.py https://wanychat.vercel.app` creates the tables and copies settings, rules, and accounts from local.
+Initial setup, already done: `python3 cloud_setup.py https://wanychat.remot.in` creates the tables and copies settings, rules, and accounts from local.
 DeepSeek credential: create it in the n8n cloud UI (Credentials → DeepSeek), then run `python3 link_deepseek.py`.
 
 ## Meta setup (app 4227152544202744 → Instagram → API setup with Instagram login)
-1. **Business login settings → OAuth redirect URI**: `https://wanychat.vercel.app/webhook/wany-oauth`
+1. **Business login settings → OAuth redirect URI**: `https://wanychat.remot.in/webhook/wany-oauth`
 2. **Configure webhooks**: Callback URL `https://kinasih.app.n8n.cloud/webhook/wany-ig`, with Verify token = the `verify_token` row in `wany_settings`.
    Fields: `comments`, `messages`, `messaging_postbacks`.
 3. For Instagram accounts outside the app's roles to be able to log in, run App Review (Advanced Access) for

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Sekali jalan: buat Data Table wany_* di n8n cloud dan salin data dari n8n lokal.
 
-  python3 cloud_setup.py https://wanychat.vercel.app
+  python3 cloud_setup.py https://wanychat.remot.in
 
 - ID tabel baru ditulis ke targets.json (bukan rahasia).
 - Nilai rahasia (app_secret, token akun) disalin langsung antar-server dan TIDAK pernah dicetak.
