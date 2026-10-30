@@ -108,7 +108,7 @@ function overview() {
   };
 }
 
-const SECRET = ['app_secret', 'midtrans_server_key'];
+const SECRET = ['app_secret', 'midtrans_server_key', 'midtrans_signature_key'];
 const HIDDEN = /^sa_/;
 function settingsView() {
   const values = {};

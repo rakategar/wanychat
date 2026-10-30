@@ -512,6 +512,7 @@ const GROUPS: { title: string; desc: string; fields: Def[] }[] = [
   { title: 'Midtrans', desc: 'Pembayaran langganan bulanan.', fields: [
     { key: 'midtrans_env', label: 'Mode', kind: 'select', options: ['sandbox', 'production'] },
     { key: 'midtrans_server_key', label: 'Server key', kind: 'secret', hint: 'SB-Mid-server-… (sandbox) atau Mid-server-… (production).' },
+    { key: 'midtrans_signature_key', label: 'Signature key (opsional)', kind: 'secret', hint: 'Isi kalau dasbor Midtrans memberi key terpisah untuk tanda tangan notifikasi.' },
     { key: 'midtrans_client_key', label: 'Client key' },
     { key: 'midtrans_payments', label: 'Metode bayar', hint: 'credit_card untuk perpanjangan otomatis. Tambahan (gopay, other_qris, bca_va, …) = bayar manual tiap bulan.' },
     { key: 'midtrans_fee_pct', label: 'Fee Midtrans (%)', kind: 'number' },

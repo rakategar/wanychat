@@ -15,9 +15,13 @@ const serverKey = String(settings.midtrans_server_key || '');
 const orderId = String(body.order_id || '');
 if (!serverKey || !orderId) return [];
 
-const expected = crypto.createHash('sha512').update(orderId + String(body.status_code || '') + String(body.gross_amount || '') + serverKey).digest('hex');
+// Tanda tangan bisa dibuat dengan server key utama atau "signature key" terpisah dari dasbor Midtrans
 const given = String(body.signature_key || '');
-if (given.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(given), Buffer.from(expected))) {
+const signedBy = (key) => {
+  const expected = crypto.createHash('sha512').update(orderId + String(body.status_code || '') + String(body.gross_amount || '') + key).digest('hex');
+  return given.length === expected.length && crypto.timingSafeEqual(Buffer.from(given), Buffer.from(expected));
+};
+if (![serverKey, String(settings.midtrans_signature_key || '')].filter(Boolean).some(signedBy)) {
   audit('midtrans_bad_signature', orderId, 'tanda tangan notifikasi tidak cocok, diabaikan');
   return out;
 }
