@@ -1,0 +1,39 @@
+{
+  "local": {
+    "projectId": "kh7u82ADuATgdfpb",
+    "followupEveryMin": 5,
+    "deepseek": {
+      "id": "IgarDeepSeek0001",
+      "name": "DeepSeek (IG AutoReply)"
+    },
+    "tables": {
+      "settings": "lXsFXFYOG1vNOQSm",
+      "rules": "6N0b96Ev4OmcGXji",
+      "contacts": "8VbUdM7Qwgx35o51",
+      "events": "VAgLfGVw8zoqZOkx",
+      "followups": "LNARGAnTbAE7GHXb",
+      "accounts": "oxkODROZtykw123A",
+      "sessions": "XOH1fHmqkrseuj96"
+    }
+  },
+  "cloud": {
+    "mcp": "n8n-cloud",
+    "projectId": "NeafQxF71yhfAYMc",
+    "followupEveryMin": 30,
+    "deepseek": null,
+    "tables": {
+      "settings": "xmZamhHlZnZpzHBT",
+      "rules": "Qj1LSRovcJ8ZWuuG",
+      "contacts": "OVRxMkksGmvQfiCg",
+      "events": "ufmw85HVK7FjELER",
+      "followups": "dsSOYegxLJ1l630m",
+      "accounts": "Aa1pcKJmqzfgphQO",
+      "sessions": "PhalZy1Jvp0nyPUk"
+    },
+    "workflows": {
+      "IgarSchedule0001": "dibRRPoaL0JhmkyP",
+      "IgarAdminApi0001": "YtMwpCDYE9ficEHf",
+      "IgarEngine000001": "bByX0VnVgc2B3Zjg"
+    }
+  }
+}

@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env*
+.vercel/
+.claude/
+__pycache__/
+# ekspor workflow lama (berisi token) - jangan pernah di-commit
+legacy/
+*.tsbuildinfo
