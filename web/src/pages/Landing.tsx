@@ -51,7 +51,7 @@ const FAQ = [
   },
   {
     q: 'Bisa berhenti kapan saja?',
-    a: <>Bisa. Paket berbayar diperpanjang otomatis tiap bulan lewat Midtrans, dan bisa kamu hentikan kapan saja dari menu Langganan. Paket tetap aktif sampai akhir periode.</>,
+    a: <>Bisa. Tidak ada tagihan otomatis: tiap pembayaran (Virtual Account, minimarket, atau e-wallet lewat DOKU) berlaku 1 bulan. Kalau tidak diperpanjang, paket kembali ke Gratis setelah masa aktif habis.</>,
   },
   {
     q: 'Bisa dipasang di HP seperti aplikasi?',

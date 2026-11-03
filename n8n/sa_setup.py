@@ -4,7 +4,7 @@
   SA_USER=nama SA_PASSWORD='...' python3 sa_setup.py      # atau tanpa env: ditanya di terminal
 
 - Password hanya dikirim sebagai hash scrypt (format sama dengan sa_auth.js); tidak pernah ditulis ke repo atau dicetak.
-- Setelan bawaan (engine_enabled, midtrans_env, biaya, ...) hanya ditambahkan kalau belum ada.
+- Setelan bawaan (engine_enabled, doku_env, biaya, ...) hanya ditambahkan kalau belum ada.
 - Password lama bisa diganti dari dasbor superadmin (#/admin -> Keamanan).
 """
 import base64
@@ -22,8 +22,7 @@ CLOUD = json.loads((ROOT / 'targets.json').read_text())['cloud']
 
 DEFAULTS = {
     'engine_enabled': 'true', 'signup_open': 'true', 'announcement': '',
-    'midtrans_env': 'sandbox', 'midtrans_payments': 'credit_card',
-    'midtrans_fee_pct': '2.9', 'midtrans_fee_flat': '2000',
+    'doku_env': 'production', 'doku_fee_to_customer': 'true', 'doku_ppn_pct': '11', 'doku_round': '100',
     'cost_server_idr': '450000', 'cost_other_idr': '0', 'cost_ai_per_1m_idr': '4500', 'usd_idr': '16500',
 }
 

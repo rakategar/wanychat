@@ -7,11 +7,11 @@ Browser/PWA ─▶ Vercel (web/, Vite+React)          https://wanychat.remot.in
               │  /api                ─rewrite─▶ n8n cloud /webhook/wany-api     (Wanychat · Admin API)
               │  /sa-api             ─rewrite─▶ n8n cloud /webhook/wany-sa      (Wanychat · Superadmin)
               │  /plans.json         ─rewrite─▶ n8n cloud /webhook/wany-plans   (Wanychat · Billing, CDN-cached)
-              │  /webhook/wany-*     ─rewrite─▶ n8n cloud /webhook/wany-login|oauth|midtrans
+              │  /webhook/wany-*     ─rewrite─▶ n8n cloud /webhook/wany-login|oauth|doku
 Meta webhook ─────────────────────────────────▶ n8n cloud /webhook/wany-ig      (Wanychat · Engine, HMAC-verified)
-Midtrans ─────▶ /webhook/wany-midtrans                                          (Wanychat · Billing)
+DOKU ─────────▶ /webhook/wany-doku                                              (Wanychat · Billing)
                                                 n8n Scheduler: follow-ups every 30 min, token refresh at 03.00
-                                                Billing: subscription sync + downgrade at 04.00
+                                                Billing: pending DOKU order check + downgrade at 04.00
 Data: n8n Data Tables wany_settings, wany_rules, wany_contacts, wany_events, wany_followups, wany_accounts, wany_sessions,
       wany_billing, wany_payments, wany_usage, wany_admin_sessions, wany_audit
 AI:   DeepSeek (deepseek-flash) via n8n credential
@@ -57,16 +57,17 @@ DeepSeek credential: create it in the n8n cloud UI (Credentials → DeepSeek), t
    `instagram_business_basic`, `instagram_business_manage_comments`, `instagram_business_manage_messages`.
 
 ## Superadmin (`https://wanychat.remot.in/#/admin`)
-- Users (plan, active period, suspend, force logout, stop auto-renewal), subscription analytics, revenue/profit, AI token usage (estimate), plans & prices, technical settings (Meta, Midtrans, AI, maintenance mode, announcement), password + 2FA (TOTP), audit log.
+- Users (plan, active period, suspend, force logout), subscription analytics, revenue/profit, AI token usage (estimate), plans & prices, technical settings (Meta, DOKU, AI, maintenance mode, announcement), password + 2FA (TOTP), audit log.
 - Initial login: `SA_USER=... SA_PASSWORD=... python3 n8n/sa_setup.py`. **Change the password and turn on 2FA** from the Keamanan tab after your first login.
 - Security: scrypt password, 12-hour HttpOnly + SameSite=Strict cookie (Path=/sa-api) tied to the User-Agent, session stored as SHA-256 only, 30-minute idle logout, login limits (5/IP, 20/edge IP, 30 global per 15 minutes), CSRF header + Origin check, every action logged to `wany_audit`.
 
-## Midtrans payments (monthly subscription)
-1. Midtrans dashboard → Settings → Access Keys: copy the Server Key & Client Key → superadmin → Teknis → Midtrans (start in `sandbox`).
-2. Settings → Configuration: **Payment Notification URL** and **Recurring Notification URL** = `https://wanychat.remot.in/webhook/wany-midtrans`.
-3. Automatic renewal needs card **One Click / recurring** activation (recurring MID) from Midtrans. Ask Midtrans Activation to enable it for production.
-4. Flow: Snap checkout (card, `save_card`) → notification → status re-fetched from Midtrans API + SHA512 signature + amount check → plan active for 1 month → Subscription API (`/v1/subscriptions`, monthly) is created from `saved_token_id`. Each recurring charge extends the plan by 1 month; the daily 04.00 sync catches any missed notifications; 3 days after the period ends without payment, the plan drops to Gratis.
-5. Without a saved card (or with non-card methods enabled in `midtrans_payments`) = 1 month active, no auto-renewal.
+## DOKU payments (prepaid, 1 month per payment)
+1. DOKU dashboard (production) → Integration → API Keys: Client ID (`BRN-…`) + active Secret Key (`SK-…`) → superadmin → Teknis → DOKU. The DOKU public key and `doku_key_…` API key are not used (they are for SNAP / other DOKU products).
+2. DOKU dashboard → Integration → Notification: set the notification URL of **DOKU Checkout and every payment method you enable** to `https://wanychat.remot.in/webhook/wany-doku` (checkout also sends `override_notification_url`).
+3. Every method listed in `doku_methods` must be active in the DOKU dashboard, otherwise DOKU answers `PAYMENT CHANNEL IS INACTIVE`.
+4. Flow: the user picks a plan + payment method in `#/billing` → `billing.checkout` computes the total (plan price + DOKU fee + 11% VAT on the fee, grossed up and rounded up to Rp 100, so the net received ≥ plan price) → DOKU Checkout (`/checkout/v1/payment`, only that method) → HTTP notification → signature (HMAC-SHA256 over the raw body, Request-Target `/webhook/wany-doku`) is checked and logged, then the status is re-fetched from `GET /orders/v1/status/{invoice}` + amount check → plan active for 1 month (paying again extends from the current end date). The daily 04.00 sync re-checks pending orders from the last 3 days; 3 days after the period ends without payment, the plan drops to Gratis.
+5. Fee table (DOKU list prices, before VAT) lives in `n8n/code/lib_doku.js`; override per method with the `doku_fees` setting (JSON `{"METHOD": [percent, rupiah]}`) if DOKU gives you different rates. `doku_fee_to_customer=false` stops charging fees to customers.
+6. There is no automatic recurring charge (DOKU Checkout has none); customers pay again each month.
 
 ## Costs and pricing
 Pricing on the landing page: Gratis (100 DM), Kreator Rp 49rb (1,000 DM), Pro Rp 99rb (5,000 DM), Bisnis Rp 249rb (3 accounts, 20,000 DM).

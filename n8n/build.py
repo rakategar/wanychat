@@ -407,14 +407,15 @@ def admin_api():
     return workflow("IgarAdminApi0001", "Wanychat · Admin API", n, c)
 
 
-# ---------------------------------------------------------------- Billing (Midtrans) + daftar paket publik
+# ---------------------------------------------------------------- Billing (DOKU) + daftar paket publik
 def billing():
     n = [
-        webhook("Webhook Midtrans", [0, 0], "POST", "wany-midtrans", "onReceived"),
+        webhook("Webhook DOKU", [-220, 0], "POST", "wany-doku", "onReceived", rawBody=True),
+        code_node("Ambil Body Mentah", [0, 0], "billing_raw.js"),
         dt_get("Baca Settings", [220, 0], "settings", alwaysOutputData=True, executeOnce=True),
         dt_get("Baca Billing", [440, 0], "billing", alwaysOutputData=True, executeOnce=True),
         dt_get("Baca Pembayaran", [660, 0], "payments",
-               filters=[("order_id", "eq", "={{ $('Webhook Midtrans').first().json.body.order_id || 'none' }}")],
+               filters=[("order_id", "eq", "={{ $('Ambil Body Mentah').first().json.invoice || 'none' }}")],
                alwaysOutputData=True, executeOnce=True),
         code_node("Proses Notifikasi", [880, 0], "billing_notify.js"),
         switch("Rute Billing", [1100, 0], "kind", ["billing", "payment", "audit"]),
@@ -442,7 +443,7 @@ def billing():
         }),
     ]
     c = {}
-    chain(c, "Webhook Midtrans", "Baca Settings", "Baca Billing", "Baca Pembayaran", "Proses Notifikasi", "Rute Billing")
+    chain(c, "Webhook DOKU", "Ambil Body Mentah", "Baca Settings", "Baca Billing", "Baca Pembayaran", "Proses Notifikasi", "Rute Billing")
     for i, t in enumerate(["Simpan Billing", "Simpan Pembayaran", "Catat Audit"]):
         connect(c, "Rute Billing", t, i)
     chain(c, "Setiap Hari 04.00", "Baca Settings Sync", "Baca Billing Sync", "Baca Pembayaran Sync", "Sinkron Langganan",

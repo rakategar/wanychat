@@ -408,3 +408,10 @@ ol.steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column;
 .user-card { display: flex; flex-direction: column; gap: 12px; }
 .user-card.off { background: #f3eee6; }
 .copy-val { flex: 1; min-width: 0; display: block; padding: 8px 10px; border: var(--border-thin); border-radius: var(--radius-sm); background: var(--paper); overflow-x: auto; white-space: nowrap; }
+
+/* Pilihan metode bayar (Langganan) */
+.pay-methods { display: flex; flex-direction: column; gap: 8px; max-height: 46vh; overflow-y: auto; margin: 4px 0 12px; padding: 2px 4px 4px 2px; }
+.pay-method { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: var(--border-thin); border-radius: var(--radius-sm); background: var(--surface); color: var(--ink); cursor: pointer; }
+.pay-method span { flex: 1; }
+.pay-method.on { background: var(--yellow); box-shadow: var(--shadow-sm); }
+.pay-method input { margin: 0; accent-color: var(--ink); }

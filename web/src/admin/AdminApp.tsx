@@ -172,7 +172,7 @@ function OverviewTab({ guard, go }: { guard: Guard; go: (t: Tab) => void }) {
   const checks: [boolean, string, string][] = [
     [h.engine_enabled, 'Engine auto-reply', h.engine_enabled ? 'Berjalan' : 'Mode perawatan: semua balasan dihentikan'],
     [h.meta_app, 'Aplikasi Meta', h.meta_app ? 'App ID & App Secret terisi' : 'Isi di tab Teknis'],
-    [!!h.midtrans, 'Midtrans', h.midtrans ? `Terhubung (${h.midtrans})` : 'Server key belum diisi: pembayaran nonaktif'],
+    [!!h.doku, 'DOKU', h.doku ? `Terhubung (${h.doku})` : 'Client ID / secret key belum diisi: pembayaran nonaktif'],
     [errors.length === 0, 'Error 24 jam', errors.length ? errors.map(([k, v]) => `${k}: ${v}`).join(', ') : 'Tidak ada'],
     [h.token_errors.length === 0, 'Token Instagram', h.token_errors.length ? 'Gagal diperpanjang: ' + h.token_errors.map((x) => '@' + x).join(', ') : h.token_expiring.length ? 'Segera habis: ' + h.token_expiring.join(', ') : 'Semua sehat'],
     [true, 'Event terakhir', h.last_event_at ? timeAgo(h.last_event_at) : 'Belum ada'],
@@ -191,7 +191,7 @@ function OverviewTab({ guard, go }: { guard: Guard; go: (t: Tab) => void }) {
 
       <div className="grid stats" style={{ marginBottom: 24 }}>
         <Tile n={fmt(o.totals.users)} label="Pengguna" sub={`+${o.totals.new_this_month} bulan ini`} tint="blue" />
-        <Tile n={fmt(o.totals.paid_users)} label="Berbayar" sub={`${o.totals.auto_renew} perpanjang otomatis`} tint="yellow" />
+        <Tile n={fmt(o.totals.paid_users)} label="Berbayar" sub={`${rupiah(o.totals.mrr)} / bulan (DOKU)`} tint="yellow" />
         <Tile n={rupiah(o.totals.mrr)} label="MRR" sub="dari langganan otomatis" tint="green" />
         <Tile n={rupiah(cur.revenue)} label="Pendapatan" sub={`${cur.payments} pembayaran`} tint="pink" />
         <Tile n={rupiah(cur.profit)} label="Laba bersih" sub="setelah biaya" tint={cur.profit < 0 ? 'red' : 'purple'} />
@@ -213,7 +213,7 @@ function OverviewTab({ guard, go }: { guard: Guard; go: (t: Tab) => void }) {
           </div>
           <div className="table-wrap" style={{ marginTop: 16 }}>
             <table className="table">
-              <thead><tr><th>Bulan</th><th>Pendapatan</th><th>Biaya Midtrans</th><th>Biaya AI</th><th>Server & lain</th><th>Laba</th></tr></thead>
+              <thead><tr><th>Bulan</th><th>Pendapatan</th><th>Biaya DOKU</th><th>Biaya AI</th><th>Server & lain</th><th>Laba</th></tr></thead>
               <tbody>
                 {[...o.months].reverse().map((m) => (
                   <tr key={m.month}>
@@ -262,7 +262,7 @@ function OverviewTab({ guard, go }: { guard: Guard; go: (t: Tab) => void }) {
                 <span className="badge">{p.users} user</span>
               </div>
             ))}
-            <div className="small muted" style={{ marginTop: 6 }}>{o.totals.canceled} berhenti perpanjang · {o.totals.past_due} gagal bayar · {o.totals.rules} automasi total</div>
+            <div className="small muted" style={{ marginTop: 6 }}>{o.totals.rules} automasi total</div>
           </section>
         </div>
 
@@ -323,7 +323,7 @@ function UsersTab({ guard }: { guard: Guard }) {
               <span className={'badge ' + (u.suspended ? 'red' : u.plan === 'free' ? '' : 'yellow')}>{u.suspended ? 'nonaktif' : data.plans.find((p) => p.id === u.plan)?.name || u.plan}</span>
             </div>
             <div className="kv small">
-              <span>Masa aktif</span><b>{u.plan === 'free' ? '-' : date(u.period_end)}{u.auto_renew ? ' ↻' : ''}{u.source === 'manual' ? ' (manual)' : ''}</b>
+              <span>Masa aktif</span><b>{u.plan === 'free' ? '-' : date(u.period_end)}{u.source === 'manual' ? ' (manual)' : ''}</b>
               <span>DM bulan ini</span><b>{fmt(u.usage.dm)} / {fmt(u.limits.dm)}</b>
               <span>AI bulan ini</span><b>{fmt(u.usage.ai)} / {fmt(u.limits.ai)}</b>
               <span>Automasi</span><b>{u.rules}</b>
@@ -349,7 +349,7 @@ function UserEditor({ user, plans, onClose, onSaved, guard }: { user: UserRow; p
   const [suspended, setSuspended] = useState(user.suspended)
   const [note, setNote] = useState(user.note)
   const [busy, setBusy] = useState('')
-  const [confirm, setConfirm] = useState<'' | 'revoke' | 'cancel'>('')
+  const [confirm, setConfirm] = useState<'' | 'revoke'>('')
 
   const run = async (label: string, action: string, payload: unknown, done?: string) => {
     setBusy(label)
@@ -376,14 +376,12 @@ function UserEditor({ user, plans, onClose, onSaved, guard }: { user: UserRow; p
             </Field>
           )}
         </div>
-        {plan !== user.subscribed_plan && user.auto_renew && <div className="callout yellow small">User ini punya langganan otomatis {user.subscribed_plan}. Hentikan dulu supaya tidak tertagih dobel.</div>}
         <Switch checked={!suspended} onChange={(on) => setSuspended(!on)} label={suspended ? 'Dinonaktifkan: bot berhenti & tidak bisa login' : 'Akun aktif'} />
         <Field label="Catatan internal">
           <input className="input" maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} placeholder="mis. bonus 1 bulan, mitra, …" />
         </Field>
         <div className="row">
           <button className="btn sm" disabled={!!busy} onClick={() => setConfirm('revoke')}>Paksa keluar</button>
-          {user.auto_renew && <button className="btn sm" disabled={!!busy} onClick={() => setConfirm('cancel')}>Hentikan langganan otomatis</button>}
         </div>
         <div className="row modal-actions">
           <button className="btn" onClick={onClose}>Batal</button>
@@ -392,8 +390,6 @@ function UserEditor({ user, plans, onClose, onSaved, guard }: { user: UserRow; p
       </div>
       {confirm === 'revoke' && <Confirm title="Paksa keluar?" body={`Semua sesi login @${user.username} dihapus. Automasinya tetap jalan.`} confirmLabel="Keluarkan"
         onCancel={() => setConfirm('')} onConfirm={() => { setConfirm(''); run('revoke', 'sa.user.revoke', { account_id: user.ig_user_id }, 'Sesi dicabut') }} />}
-      {confirm === 'cancel' && <Confirm title="Hentikan langganan otomatis?" body="Tagihan bulan berikutnya di Midtrans dibatalkan. Paket tetap aktif sampai masa aktif habis." confirmLabel="Hentikan"
-        onCancel={() => setConfirm('')} onConfirm={() => { setConfirm(''); run('cancel', 'sa.user.cancel_sub', { account_id: user.ig_user_id }, 'Langganan otomatis dihentikan') }} />}
     </div>
   )
 }
@@ -464,7 +460,7 @@ function PlansTab({ guard }: { guard: Guard }) {
           <button className="btn dark" disabled={busy} onClick={save}>{busy ? <Spinner /> : 'Simpan paket'}</button>
         </div>
       </div>
-      <div className="callout yellow small" style={{ marginBottom: 16 }}>Mengubah harga tidak mengubah tagihan otomatis yang sudah berjalan di Midtrans; harga baru berlaku untuk langganan baru.</div>
+      <div className="callout yellow small" style={{ marginBottom: 16 }}>Harga baru berlaku untuk pembayaran berikutnya. Biaya DOKU ditambahkan otomatis ke tagihan pelanggan per metode bayar.</div>
       <div className="grid lp-plans">
         {plans.map((p, i) => (
           <section key={i} className="card stack">
@@ -496,7 +492,7 @@ const GROUPS: { title: string; desc: string; fields: Def[] }[] = [
     { key: 'engine_enabled', label: 'Engine auto-reply aktif', kind: 'bool', hint: 'Matikan untuk mode perawatan: semua balasan & follow-up berhenti.' },
     { key: 'signup_open', label: 'Pendaftaran akun baru dibuka', kind: 'bool' },
     { key: 'announcement', label: 'Pengumuman di panel pengguna', hint: 'Kosongkan untuk menyembunyikan. Maks 300 karakter.' },
-    { key: 'public_url', label: 'URL publik panel', hint: 'mis. https://wanychat.remot.in (tanpa / di akhir). Dipakai untuk login Instagram & Midtrans.' },
+    { key: 'public_url', label: 'URL publik panel', hint: 'mis. https://wanychat.remot.in (tanpa / di akhir). Dipakai untuk login Instagram & DOKU.' },
   ] },
   { title: 'Instagram / Meta', desc: 'Aplikasi Meta untuk login & webhook.', fields: [
     { key: 'ig_app_id', label: 'Instagram App ID' },
@@ -509,14 +505,15 @@ const GROUPS: { title: string; desc: string; fields: Def[] }[] = [
     { key: 'gemini_persona', label: 'Persona bawaan', kind: 'area', hint: 'Dipakai paket tanpa persona sendiri.' },
     { key: 'cost_ai_per_1m_idr', label: 'Biaya AI per 1 juta token (Rp)', kind: 'number', hint: 'Untuk estimasi biaya; lihat tarif DeepSeek.' },
   ] },
-  { title: 'Midtrans', desc: 'Pembayaran langganan bulanan.', fields: [
-    { key: 'midtrans_env', label: 'Mode', kind: 'select', options: ['sandbox', 'production'] },
-    { key: 'midtrans_server_key', label: 'Server key', kind: 'secret', hint: 'SB-Mid-server-… (sandbox) atau Mid-server-… (production).' },
-    { key: 'midtrans_signature_key', label: 'Signature key (opsional)', kind: 'secret', hint: 'Isi kalau dasbor Midtrans memberi key terpisah untuk tanda tangan notifikasi.' },
-    { key: 'midtrans_client_key', label: 'Client key' },
-    { key: 'midtrans_payments', label: 'Metode bayar', hint: 'credit_card untuk perpanjangan otomatis. Tambahan (gopay, other_qris, bca_va, …) = bayar manual tiap bulan.' },
-    { key: 'midtrans_fee_pct', label: 'Fee Midtrans (%)', kind: 'number' },
-    { key: 'midtrans_fee_flat', label: 'Fee Midtrans tetap (Rp)', kind: 'number' },
+  { title: 'DOKU', desc: 'Pembayaran paket (DOKU Checkout). Fee DOKU + PPN ditambahkan ke tagihan pelanggan.', fields: [
+    { key: 'doku_env', label: 'Mode', kind: 'select', options: ['production', 'sandbox'] },
+    { key: 'doku_client_id', label: 'Client ID', hint: 'BRN-… dari dasbor DOKU → Integration → API Keys.' },
+    { key: 'doku_secret_key', label: 'Secret key', kind: 'secret', hint: 'SK-… (active secret key).' },
+    { key: 'doku_methods', label: 'Metode bayar', hint: 'Dipisah koma, harus sudah aktif di dasbor DOKU. mis. QRIS,VIRTUAL_ACCOUNT_BCA,VIRTUAL_ACCOUNT_BRI,EMONEY_DANA,ONLINE_TO_OFFLINE_ALFA' },
+    { key: 'doku_fee_to_customer', label: 'Biaya DOKU dibebankan ke pelanggan', kind: 'bool', hint: 'Total = harga paket + fee DOKU + PPN fee, jadi yang diterima bersih = harga paket.' },
+    { key: 'doku_ppn_pct', label: 'PPN atas fee DOKU (%)', kind: 'number' },
+    { key: 'doku_round', label: 'Pembulatan total ke atas (Rp)', kind: 'number', hint: 'mis. 100 → Rp 53.437 jadi Rp 53.500.' },
+    { key: 'doku_fees', label: 'Tarif khusus (opsional, JSON)', kind: 'area', hint: 'Kosongkan = tarif standar DOKU. Format {"QRIS":[0.7,0],"VIRTUAL_ACCOUNT_BRI":[0,4000]} = [persen, rupiah] sebelum PPN.' },
   ] },
   { title: 'Biaya bulanan', desc: 'Untuk menghitung laba.', fields: [
     { key: 'cost_server_idr', label: 'Server / n8n (Rp per bulan)', kind: 'number' },
@@ -584,7 +581,7 @@ function SettingsTab({ guard }: { guard: Guard }) {
               <Copy label="Callback URL webhook Meta" value={data.settings.webhooks.meta} />
               <Copy label="OAuth redirect URI" value={data.settings.webhooks.oauth_redirect} />
             </>}
-            {g.title === 'Midtrans' && <Copy label="Payment & Recurring Notification URL (dasbor Midtrans)" value={data.settings.webhooks.midtrans} />}
+            {g.title === 'DOKU' && <Copy label="Notification URL (dasbor DOKU → Checkout & tiap metode bayar)" value={data.settings.webhooks.doku} />}
           </section>
         ))}
       </div>
@@ -690,7 +687,7 @@ function SecurityTab({ guard }: { guard: Guard }) {
   )
 }
 
-const AUDIT_COLOR: Record<string, string> = { login_failed: 'red', login_locked: 'red', midtrans_bad_signature: 'red', midtrans_amount_mismatch: 'red', payment_paid: 'green', login_ok: 'blue' }
+const AUDIT_COLOR: Record<string, string> = { login_failed: 'red', login_locked: 'red', doku_bad_signature: 'red', doku_amount_mismatch: 'red', doku_status_error: 'red', payment_paid: 'green', login_ok: 'blue' }
 function AuditTable({ rows }: { rows: AuditRow[] }) {
   if (!rows.length) return <p className="muted" style={{ margin: 0 }}>Belum ada catatan.</p>
   return (

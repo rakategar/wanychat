@@ -9,7 +9,7 @@ const action = String(body.action || '');
 const p = body.payload && typeof body.payload === 'object' ? body.payload : {};
 const settings = {};
 for (const it of $('Baca Settings').all()) if (it.json.key) settings[it.json.key] = it.json.value ?? '';
-//#include lib_midtrans.js
+//#include lib_doku.js
 const base = String(settings.public_url || '').replace(/\/$/, '');
 const ip = String(headers['x-vercel-forwarded-for'] || headers['cf-connecting-ip'] || headers['x-real-ip'] || '').split(',')[0].trim();
 const edgeIp = String(headers['cf-connecting-ip'] || '');
@@ -152,7 +152,14 @@ const saveSettings = (pairs, response, act, detail) => {
 // Setelan yang boleh diubah dari dasbor, beserta validasinya. secret = tidak pernah dikirim balik ke browser.
 const BOOL = (v) => v === 'true' || v === 'false';
 const NUM = (min, max) => (v) => v !== '' && isFinite(Number(v)) && Number(v) >= min && Number(v) <= max;
-const PAYMENTS = ['credit_card', 'gopay', 'shopeepay', 'other_qris', 'bca_va', 'bni_va', 'bri_va', 'permata_va', 'cimb_va', 'echannel', 'other_va'];
+const validFees = (v) => {
+  if (v.trim() === '') return true;
+  try {
+    const o = JSON.parse(v);
+    return o && typeof o === 'object' && !Array.isArray(o) && Object.entries(o).every(([k, x]) => DOKU_LABELS[k] && Array.isArray(x) && x.length === 2
+      && Number(x[0]) >= 0 && Number(x[0]) <= 20 && Number(x[1]) >= 0 && Number(x[1]) <= 100000);
+  } catch (e) { return false; }
+};
 const EDITABLE = {
   public_url: { ok: (v) => /^https:\/\/[a-z0-9.-]+(:\d+)?$/i.test(v) },
   graph_version: { ok: (v) => /^v\d{1,2}\.\d$/.test(v) },
@@ -164,13 +171,14 @@ const EDITABLE = {
   gemini_enabled: { ok: BOOL },
   gemini_persona: { ok: (v) => v.length <= 2000 },
   announcement: { ok: (v) => v.length <= 300 },
-  midtrans_env: { ok: (v) => v === 'sandbox' || v === 'production' },
-  midtrans_server_key: { secret: true, ok: (v) => /^(SB-)?Mid-server-[\w.-]{8,}$/.test(v) },
-  midtrans_signature_key: { secret: true, ok: (v) => /^(SB-)?Mid-server-[\w.-]{8,}$/.test(v) },
-  midtrans_client_key: { ok: (v) => /^(SB-)?Mid-client-[\w.-]{8,}$/.test(v) },
-  midtrans_payments: { ok: (v) => v.split(',').every(x => PAYMENTS.includes(x.trim())) && v.trim() !== '' },
-  midtrans_fee_pct: { ok: NUM(0, 20) },
-  midtrans_fee_flat: { ok: NUM(0, 100000) },
+  doku_env: { ok: (v) => v === 'sandbox' || v === 'production' },
+  doku_client_id: { ok: (v) => /^[A-Z]{2,5}-[\w-]{6,60}$/.test(v) },
+  doku_secret_key: { secret: true, ok: (v) => /^SK-[\w]{10,80}$/.test(v) },
+  doku_methods: { ok: (v) => v.trim() !== '' && v.split(',').every(x => DOKU_LABELS[x.trim()]) },
+  doku_fee_to_customer: { ok: BOOL },
+  doku_ppn_pct: { ok: NUM(0, 20) },
+  doku_round: { ok: NUM(1, 1000) },
+  doku_fees: { ok: validFees },
   cost_server_idr: { ok: NUM(0, 100000000) },
   cost_other_idr: { ok: NUM(0, 100000000) },
   cost_ai_per_1m_idr: { ok: NUM(0, 10000000) },
@@ -262,18 +270,6 @@ switch (action) {
     out.push({ json: { route: 'billing_save', billing: next, response: { ok: true, billing: next } } });
     if (next.suspended && !cur.suspended) out.push({ json: { route: 'revoke', account_id: id } });
     audit('user_update', id, ['plan=' + next.plan, 'end=' + (next.period_end || '-'), 'suspended=' + next.suspended, next.note ? 'note' : ''].join(' '));
-    return out;
-  }
-
-  case 'sa.user.cancel_sub': {
-    const id = String(p.account_id || '');
-    const cur = billingBy[id];
-    if (!cur || !cur.subscription_id) return done(400, { ok: false, error: 'User ini tidak punya langganan otomatis' });
-    const r = await midtrans('POST', CORE + '/v1/subscriptions/' + encodeURIComponent(cur.subscription_id) + '/disable');
-    if (!r.ok) return done(502, { ok: false, error: 'Midtrans: ' + r.error });
-    const next = Object.assign(billingRow(cur, id), { subscription_id: '', cancel_at_period_end: true, status: 'canceled' });
-    out.push({ json: { route: 'billing_save', billing: next, response: { ok: true, billing: next } } });
-    audit('subscription_cancel', id, cur.subscription_id);
     return out;
   }
 

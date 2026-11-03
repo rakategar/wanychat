@@ -73,7 +73,7 @@ function overview() {
     };
   });
   const paidUsers = users.filter(x => x.plan !== 'free');
-  const mrr = users.filter(x => x.auto_renew && x.source === 'midtrans').reduce((s, x) => s + num((plans.find(p => p.id === x.plan) || {}).price), 0);
+  const mrr = users.filter(x => x.plan !== 'free' && x.source === 'doku').reduce((s, x) => s + num((plans.find(p => p.id === x.plan) || {}).price), 0);
   const thisMonth = usage.filter(u => u.month === month);
   return {
     month, usd_idr: usdIdr,
@@ -96,7 +96,7 @@ function overview() {
     health: {
       engine_enabled: settings.engine_enabled !== 'false', signup_open: settings.signup_open !== 'false',
       ai_enabled: settings.gemini_enabled !== 'false',
-      midtrans: settings.midtrans_server_key ? (settings.midtrans_env === 'production' ? 'production' : 'sandbox') : '',
+      doku: settings.doku_client_id && settings.doku_secret_key ? (settings.doku_env === 'sandbox' ? 'sandbox' : 'production') : '',
       meta_app: !!(settings.ig_app_id && settings.app_secret),
       errors_24h: errors24,
       token_errors: users.filter(x => x.token_refresh_error).map(x => x.username),
@@ -108,12 +108,13 @@ function overview() {
   };
 }
 
-const SECRET = ['app_secret', 'midtrans_server_key', 'midtrans_signature_key'];
+const SECRET = ['app_secret', 'doku_secret_key'];
+const LEGACY = /^midtrans_/;
 const HIDDEN = /^sa_/;
 function settingsView() {
   const values = {};
   for (const [k, v] of Object.entries(settings)) {
-    if (HIDDEN.test(k) || k === 'plans') continue;
+    if (HIDDEN.test(k) || LEGACY.test(k) || k === 'plans') continue;
     values[k] = SECRET.includes(k) ? (v ? { set: true, hint: '••••' + String(v).slice(-4) } : { set: false }) : v;
   }
   return {
@@ -121,7 +122,7 @@ function settingsView() {
     webhooks: {
       meta: 'https://kinasih.app.n8n.cloud/webhook/wany-ig',
       oauth_redirect: (settings.public_url || '') + '/webhook/wany-oauth',
-      midtrans: (settings.public_url || '') + '/webhook/wany-midtrans',
+      doku: (settings.public_url || '') + '/webhook/wany-doku',
     },
     totp: !!settings.sa_totp_secret,
   };

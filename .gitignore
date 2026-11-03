@@ -7,3 +7,10 @@ __pycache__/
 # ekspor workflow lama (berisi token) - jangan pernah di-commit
 legacy/
 *.tsbuildinfo
+
+# film promosi (aset besar, musik berlisensi)
+film/
+*.mp3
+
+# salinan workflow n8n cloud (python3 n8n/backup_cloud.py)
+n8n/backup/

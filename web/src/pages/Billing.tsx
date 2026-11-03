@@ -12,7 +12,9 @@ const STATUS: Record<string, { label: string; color: string }> = {
   deny: { label: 'ditolak', color: 'red' },
   failure: { label: 'gagal', color: 'red' },
   refund: { label: 'refund', color: 'purple' },
+  amount_mismatch: { label: 'perlu dicek', color: 'red' },
 }
+type Method = { id: string; label: string; totals: Record<string, number> }
 const date = (iso?: string | null) => (iso ? new Date(iso).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '-')
 
 export default function BillingPage({ billing: initial, reload }: { billing: Billing | null; reload: () => Promise<unknown> }) {
@@ -21,26 +23,28 @@ export default function BillingPage({ billing: initial, reload }: { billing: Bil
   const [plans, setPlans] = useState<Plan[] | null>(null)
   const [enabled, setEnabled] = useState(true)
   const [payments, setPayments] = useState<Payment[] | null>(null)
+  const [methods, setMethods] = useState<Method[]>([])
   const [choose, setChoose] = useState<Plan | null>(null)
-  const [canceling, setCanceling] = useState(false)
+  const [method, setMethod] = useState('')
   const [busy, setBusy] = useState(false)
   const [waiting, setWaiting] = useState(() => window.location.hash.includes('paid=1'))
 
   const load = useCallback(async () => {
     const [b, p] = await Promise.all([
-      api<{ billing: Billing; plans: Plan[]; payments_enabled: boolean }>('billing.get'),
+      api<{ billing: Billing; plans: Plan[]; payments_enabled: boolean; methods: Method[] }>('billing.get'),
       api<{ payments: Payment[] }>('billing.payments'),
     ])
     setBilling(b.billing)
     setPlans(b.plans)
-    setEnabled(b.payments_enabled)
+    setEnabled(b.payments_enabled && b.methods.length > 0)
+    setMethods(b.methods)
     setPayments(p.payments)
     return { billing: b.billing, payments: p.payments }
   }, [])
 
   useEffect(() => { load().catch((e) => toast(e.message, 'error')) }, [load, toast])
 
-  // Kembali dari halaman Midtrans: tunggu notifikasi pembayaran diproses (maks ±1 menit)
+  // Kembali dari halaman DOKU: tunggu notifikasi pembayaran diproses (maks ±1 menit)
   useEffect(() => {
     if (!waiting) return
     let n = 0
@@ -54,30 +58,21 @@ export default function BillingPage({ billing: initial, reload }: { billing: Bil
           window.history.replaceState(null, '', '#/billing')
         }
       } catch { /* coba lagi */ }
-      if (n >= 12) { clearInterval(t); setWaiting(false); window.history.replaceState(null, '', '#/billing') }
+      if (n >= 24) { clearInterval(t); setWaiting(false); window.history.replaceState(null, '', '#/billing') }
     }, 5000)
     return () => clearInterval(t)
   }, [waiting, load, reload, toast])
 
-  const checkout = async (plan: Plan) => {
+  const checkout = async (plan: Plan, method: string) => {
     setBusy(true)
     try {
-      const r = await api<{ redirect_url: string }>('billing.checkout', { plan: plan.id })
+      const r = await api<{ redirect_url: string }>('billing.checkout', { plan: plan.id, method })
       window.location.href = r.redirect_url
     } catch (e) {
       toast((e as Error).message, 'error')
       setBusy(false)
       setChoose(null)
     }
-  }
-
-  const cancel = async () => {
-    setCanceling(false)
-    try {
-      await api('billing.cancel')
-      toast('Perpanjangan otomatis dihentikan')
-      await load(); reload()
-    } catch (e) { toast((e as Error).message, 'error') }
   }
 
   if (!billing) return <Spinner />
@@ -93,7 +88,7 @@ export default function BillingPage({ billing: initial, reload }: { billing: Bil
         </div>
       </div>
 
-      {waiting && <div className="callout yellow" style={{ marginBottom: 20 }}><Spinner /> &nbsp;Menunggu konfirmasi pembayaran dari Midtrans…</div>}
+      {waiting && <div className="callout yellow" style={{ marginBottom: 20 }}><Spinner /> &nbsp;Menunggu konfirmasi pembayaran dari DOKU… (pembayaran VA/minimarket bisa dibayar nanti; paket aktif otomatis begitu lunas)</div>}
 
       <div className="grid two">
         <section className={'card stack ' + (paid ? 'tint-yellow' : '')}>
@@ -106,14 +101,9 @@ export default function BillingPage({ billing: initial, reload }: { billing: Bil
           </div>
           <div className="small">
             {!paid && 'Paket gratis selamanya. Upgrade kapan saja untuk kuota lebih besar, follow-up, dan AI.'}
-            {paid && billing.auto_renew && <>Diperpanjang otomatis pada <b>{date(billing.period_end)}</b>{billing.card_hint && <> dengan kartu <b>{billing.card_hint}</b></>}.</>}
-            {paid && !billing.auto_renew && billing.cancel_at_period_end && <>Perpanjangan dihentikan. Paket aktif sampai <b>{date(billing.period_end)}</b>, lalu kembali ke Gratis.</>}
-            {paid && !billing.auto_renew && !billing.cancel_at_period_end && <>Aktif sampai <b>{date(billing.period_end)}</b>.{billing.source !== 'manual' && ' Tanpa perpanjangan otomatis: bayar lagi sebelum tanggal itu.'}</>}
+            {paid && <>Aktif sampai <b>{date(billing.period_end)}</b>.{billing.source !== 'manual' && ' Bayar lagi sebelum tanggal itu untuk memperpanjang 1 bulan (sisa masa aktif tidak hilang).'}</>}
             {billing.status === 'past_due' && <div className="callout pink" style={{ marginTop: 10 }}>Tagihan bulan ini gagal. Perbarui pembayaran supaya paket tidak turun ke Gratis.</div>}
           </div>
-          {billing.auto_renew && (
-            <button className="btn sm" style={{ alignSelf: 'flex-start' }} onClick={() => setCanceling(true)}>Hentikan perpanjangan otomatis</button>
-          )}
         </section>
 
         <section className="card stack">
@@ -139,8 +129,8 @@ export default function BillingPage({ billing: initial, reload }: { billing: Bil
                 <ul className="plan-list">{planFeatures(p).map((f) => <li key={f}>{f}</li>)}</ul>
                 {p.price > 0 && (
                   <button className={'btn ' + (current ? '' : 'dark')} style={{ marginTop: 'auto' }}
-                    disabled={!enabled || busy || (current && billing.auto_renew)} onClick={() => setChoose(p)}>
-                    {current ? (billing.auto_renew ? 'Aktif' : 'Perpanjang') : plan.price > p.price ? 'Turun ke ' + p.name : 'Upgrade ke ' + p.name}
+                    disabled={!enabled || busy} onClick={() => { setChoose(p); setMethod(methods[0]?.id || '') }}>
+                    {current ? 'Perpanjang' : plan.price > p.price ? 'Turun ke ' + p.name : 'Upgrade ke ' + p.name}
                   </button>
                 )}
               </article>
@@ -149,8 +139,8 @@ export default function BillingPage({ billing: initial, reload }: { billing: Bil
         </div>
       )}
       <p className="hint" style={{ marginTop: 12 }}>
-        Pembayaran diproses Midtrans. Centang “Simpan kartu” di halaman pembayaran supaya diperpanjang otomatis tiap bulan.
-        Ganti paket berlaku langsung tanpa prorata.
+        Pembayaran diproses DOKU (Virtual Account, minimarket, e-wallet). Tiap pembayaran = 1 bulan, tanpa tagihan otomatis.
+        Biaya layanan metode bayar ditambahkan ke total. Ganti paket berlaku langsung tanpa prorata.
       </p>
 
       <section className="card" style={{ marginTop: 28 }}>
@@ -165,7 +155,7 @@ export default function BillingPage({ billing: initial, reload }: { billing: Bil
                   return (
                     <tr key={x.order_id}>
                       <td>{date(x.paid_at || x.createdAt)}</td>
-                      <td>{plans?.find((p) => p.id === x.plan)?.name || x.plan}{x.kind === 'renewal' && <span className="muted"> · otomatis</span>}</td>
+                      <td>{plans?.find((p) => p.id === x.plan)?.name || x.plan}</td>
                       <td>{rupiah(x.amount)}</td>
                       <td><span className={'badge ' + st.color}>{st.label}</span></td>
                       <td className="mono">{x.order_id}</td>
@@ -183,22 +173,23 @@ export default function BillingPage({ billing: initial, reload }: { billing: Bil
           title={`Langganan ${choose.name}`}
           tone="primary"
           body={<>
-            <p style={{ marginTop: 0 }}>Bayar <b>{rupiah(choose.price)}</b> sekarang untuk 1 bulan. Dengan kartu kredit/debit yang disimpan,
-              paket diperpanjang otomatis <b>{rupiah(choose.price)} setiap bulan</b> sampai kamu menghentikannya.</p>
-            <p style={{ marginBottom: 0 }}>Kamu akan diarahkan ke halaman pembayaran aman Midtrans.</p>
+            <p style={{ marginTop: 0 }}>Paket {choose.name} <b>{rupiah(choose.price)}</b> untuk 1 bulan. Pilih cara bayar:</p>
+            <div className="pay-methods" role="radiogroup">
+              {methods.map((m) => (
+                <label key={m.id} className={'pay-method' + (m.id === method ? ' on' : '')}>
+                  <input type="radio" name="pay-method" checked={m.id === method} onChange={() => setMethod(m.id)} />
+                  <span>{m.label}</span>
+                  <b>{rupiah(m.totals[choose.id] ?? choose.price)}</b>
+                </label>
+              ))}
+            </div>
+            <p className="small" style={{ marginBottom: 0 }}>Total sudah termasuk biaya layanan pembayaran
+              {method && <> (<b>{rupiah((methods.find((m) => m.id === method)?.totals[choose.id] ?? choose.price) - choose.price)}</b>)</>}.
+              Kamu akan diarahkan ke halaman pembayaran aman DOKU.</p>
           </>}
-          confirmLabel={busy ? 'Membuka…' : 'Lanjut bayar'}
-          onConfirm={() => checkout(choose)}
+          confirmLabel={busy ? 'Membuka…' : method ? 'Bayar ' + rupiah(methods.find((m) => m.id === method)?.totals[choose.id] ?? choose.price) : 'Pilih metode'}
+          onConfirm={() => method && !busy && checkout(choose, method)}
           onCancel={() => !busy && setChoose(null)}
-        />
-      )}
-      {canceling && (
-        <Confirm
-          title="Hentikan perpanjangan otomatis?"
-          body={<>Paket {plan.name} tetap aktif sampai {date(billing.period_end)}, lalu turun ke Gratis. Kamu bisa berlangganan lagi kapan saja.</>}
-          confirmLabel="Hentikan"
-          onConfirm={cancel}
-          onCancel={() => setCanceling(false)}
         />
       )}
     </>

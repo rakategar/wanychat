@@ -48,23 +48,7 @@ const billingView = () => ({
   usage, month, rules_used: myRules.length,
 });
 
-// Midtrans
-const MT_PROD = settings.midtrans_env === 'production';
-const SNAP = MT_PROD ? 'https://app.midtrans.com' : 'https://app.sandbox.midtrans.com';
-const CORE = MT_PROD ? 'https://api.midtrans.com' : 'https://api.sandbox.midtrans.com';
-async function midtrans(method, url, payload, headers) {
-  try {
-    const res = await helpers.httpRequest({
-      method, url, body: payload, json: true, ignoreHttpStatusErrors: true, returnFullResponse: true, timeout: 20000,
-      headers: Object.assign({ Authorization: 'Basic ' + Buffer.from(String(settings.midtrans_server_key || '') + ':').toString('base64'), Accept: 'application/json' }, headers || {}),
-    });
-    const b = res.body || {};
-    const err = res.statusCode >= 300 || (b.status_code && Number(b.status_code) >= 300);
-    return { ok: !err, body: b, error: err ? ((b.error_messages || b.validation_messages || []).join('; ') || b.status_message || ('HTTP ' + res.statusCode)) : '' };
-  } catch (e) {
-    return { ok: false, body: {}, error: e.message };
-  }
-}
+//#include lib_doku.js
 
 const reply = (route, response, extra) => [{ json: Object.assign({ route, response, account_id: acc ? String(acc.ig_user_id) : '' }, extra || {}) }];
 const fail = (error, status) => reply('direct', { ok: false, error }, { status: status || 400 });
@@ -109,7 +93,14 @@ switch (action) {
     return reply('direct', { ok: true, account: publicAccount(), billing: billingView(), announcement: settings.announcement || '' });
 
   case 'billing.get':
-    return reply('direct', { ok: true, billing: billingView(), plans: plans.map(publicPlan), payments_enabled: !!settings.midtrans_server_key });
+    return reply('direct', {
+      ok: true, billing: billingView(), plans: plans.map(publicPlan), payments_enabled: DOKU_READY,
+      // Total per metode bayar per paket: fee DOKU + PPN-nya sudah ditambahkan supaya diterima bersih = harga paket
+      methods: dokuMethods().map(id => ({
+        id, label: DOKU_LABELS[id],
+        totals: Object.fromEntries(plans.filter(x => Number(x.price) > 0).map(x => [x.id, dokuCharge(x.price, id).total])),
+      })),
+    });
 
   case 'billing.payments':
     return reply('payments_list', null);
@@ -117,37 +108,32 @@ switch (action) {
   case 'billing.checkout': {
     const target = plans.find(x => x.id === String(p.plan || '') && Number(x.price) > 0);
     if (!target) return fail('Paket tidak ditemukan');
-    if (!settings.midtrans_server_key) return fail('Pembayaran belum dibuka. Hubungi admin Wanychat.');
+    if (!DOKU_READY) return fail('Pembayaran belum dibuka. Hubungi admin Wanychat.');
     if (!base) return fail('public_url belum disetel admin');
-    if (billing && billing.plan === target.id && billing.subscription_id && !isTrue(billing.cancel_at_period_end) && plan.id === target.id) {
-      return fail('Paket ' + target.name + ' sudah aktif dan diperpanjang otomatis.');
-    }
+    const method = String(p.method || '');
+    if (!dokuMethods().includes(method)) return fail('Pilih metode pembayaran');
     const price = Math.round(Number(target.price));
-    const orderId = ('WNY-' + target.id + '-' + acc.ig_user_id + '-' + Date.now().toString(36)).slice(0, 50);
-    const payments = String(settings.midtrans_payments || 'credit_card').split(',').map(x => x.trim()).filter(Boolean);
-    const r = await midtrans('POST', SNAP + '/snap/v1/transactions', {
-      transaction_details: { order_id: orderId, gross_amount: price },
-      item_details: [{ id: target.id, price, quantity: 1, name: ('Wanychat ' + target.name + ' 1 bulan').slice(0, 50) }],
-      customer_details: { first_name: String(acc.username || 'Pelanggan').slice(0, 50) },
-      credit_card: { secure: true, save_card: true },
-      user_id: String(acc.ig_user_id),
-      enabled_payments: payments,
-      callbacks: { finish: base + '/#/billing?paid=1' },
-      expiry: { unit: 'hours', duration: 2 },
-      custom_field1: String(acc.ig_user_id), custom_field2: target.id,
-    }, { 'X-Override-Notification': base + '/webhook/wany-midtrans' });
-    if (!r.ok || !r.body.redirect_url) return fail('Gagal membuat pembayaran: ' + (r.error || 'tanpa redirect_url'));
-    return reply('payment_insert', { ok: true, redirect_url: r.body.redirect_url }, { payment: {
-      order_id: orderId, account_id: String(acc.ig_user_id), plan: target.id, amount: price, status: 'pending',
-      payment_type: '', kind: 'checkout', transaction_id: '', paid_at: null, fee: 0, note: '',
+    const charge = dokuCharge(price, method);
+    // Maks 30 karakter tanpa simbol (syarat kartu kredit & KKI di DOKU)
+    const orderId = ('WNY' + Date.now().toString(36) + dokuCrypto.randomBytes(4).toString('hex')).toUpperCase().slice(0, 30);
+    const items = [{ id: target.id, name: ('Wanychat ' + target.name + ' 1 bulan').slice(0, 50), price, quantity: 1 }];
+    if (charge.surcharge > 0) items.push({ id: 'fee', name: 'Biaya layanan pembayaran', price: charge.surcharge, quantity: 1 });
+    const r = await doku('POST', '/checkout/v1/payment', {
+      order: {
+        amount: charge.total, invoice_number: orderId, currency: 'IDR', line_items: items, auto_redirect: true,
+        callback_url: base + '/#/billing?paid=1', callback_url_result: base + '/#/billing?paid=1', language: 'ID',
+      },
+      payment: { payment_due_date: 120, payment_method_types: [method] },
+      customer: { id: 'IG' + acc.ig_user_id, name: String(acc.name || acc.username || 'Pelanggan').slice(0, 50) },
+      additional_info: { override_notification_url: base + DOKU_NOTIFY_PATH },
+    });
+    const url = r.body && r.body.response && r.body.response.payment && r.body.response.payment.url;
+    if (!r.ok || !url) return fail('Gagal membuat pembayaran: ' + (r.error || 'tanpa URL pembayaran'));
+    return reply('payment_insert', { ok: true, redirect_url: url }, { payment: {
+      order_id: orderId, account_id: String(acc.ig_user_id), plan: target.id, amount: charge.total, status: 'pending',
+      payment_type: method, kind: 'checkout', transaction_id: String((r.body.response.order && r.body.response.order.session_id) || ''),
+      paid_at: null, fee: 0, note: charge.surcharge ? 'harga ' + price + ' + biaya ' + charge.surcharge : '',
     } });
-  }
-
-  case 'billing.cancel': {
-    if (!billing || !billing.subscription_id) return fail('Tidak ada perpanjangan otomatis yang aktif');
-    const r = await midtrans('POST', CORE + '/v1/subscriptions/' + encodeURIComponent(billing.subscription_id) + '/disable');
-    if (!r.ok) return fail('Gagal menghentikan perpanjangan: ' + r.error);
-    return reply('billing_save', { ok: true }, { billing: fullBilling({ subscription_id: '', cancel_at_period_end: true, status: 'canceled' }) });
   }
 
   case 'auth.logout':
