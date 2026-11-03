@@ -25,10 +25,14 @@ if (settings.engine_enabled === 'false') return []; // mode perawatan dari dasbo
 const plans = loadPlans(settings);
 const month = monthKey();
 const billingBy = latestBy($('Baca Billing').all().map(i => i.json), 'account_id');
-const usageBy = latestBy($('Baca Usage').all().map(i => i.json).filter(u => u.month === month), 'account_id');
+const usageRows = $('Baca Usage').all().map(i => i.json).filter(u => u.month === month);
+const usageBy = latestBy(usageRows, 'account_id');
+const creditBy = latestBy($('Baca Kredit').all().map(i => i.json), 'account_id');
 const usage = {}; // account_id -> { dm, ai, ai_tokens, comments, changed }
+const groups = {}; // owner grup -> { dm, ai } pemakaian bersama bulan ini + { used, granted } kredit AI
 const accounts = {};
 for (const it of $('Baca Akun').all()) if (it.json.ig_user_id) accounts[String(it.json.ig_user_id)] = it.json;
+const accountList = Object.values(accounts);
 const everyRule = $('Baca Rules').all().map(i => i.json).filter(r => r.id);
 const G = 'https://graph.instagram.com/' + (settings.graph_version || 'v23.0');
 const out = [];
@@ -41,6 +45,7 @@ let rules = [];
 let account = {};
 let plan = DEFAULT_PLANS[0];
 let u = null;
+let g = null;
 
 // Dedupe: Meta bisa mengirim event yang sama lebih dari sekali
 const sd = $getWorkflowStaticData('global');
@@ -67,8 +72,10 @@ const log = (e) => out.push({ json: {
   error: e.error ? String(e.error).slice(0, 500) : '',
 } });
 
-// Kuota DM per bulan sesuai paket; balasan komentar publik tidak dihitung
-const dmLeft = () => u.dm < Number(plan.dm || 0);
+// Kuota DM per bulan sesuai paket, dibagi bersama semua akun satu langganan; balasan komentar publik tidak dihitung
+const dmLeft = () => g.dm < Number(plan.dm || 0);
+const countDm = () => { u.dm++; g.dm++; u.changed = true; };
+const wm = (text) => withWatermark(text, plan, settings);
 const quotaLog = (e) => log(Object.assign({ type: 'quota', status: 'skipped', text: 'Kuota ' + e.what + ' paket ' + plan.name + ' bulan ini habis (' + e.limit + '). Upgrade di menu Langganan.' }, e));
 
 async function ig(method, path, payload, qs) {
@@ -115,7 +122,7 @@ function buttonFor(rule) {
 // Private reply = DM pertama ke orang yang komentar (tidak perlu dia DM duluan).
 // Tombol quick reply membuka jendela 24 jam begitu ditekan.
 async function privateReply(commentId, rule, username) {
-  const text = fill(rule.dm_message, username);
+  const text = wm(fill(rule.dm_message, username));
   const quick = buttonFor(rule);
   const r = await ig('POST', '/' + (igId || 'me') + '/messages', {
     recipient: { comment_id: commentId },
@@ -123,7 +130,7 @@ async function privateReply(commentId, rule, username) {
   });
   if (r.ok || !quick) return Object.assign(r, { text });
   // Fallback tanpa tombol: kirim konten langsung dalam satu pesan
-  const text2 = text + '\n\n' + fill(rule.dm_content, username);
+  const text2 = wm(fill(rule.dm_message, username) + '\n\n' + fill(rule.dm_content, username));
   const r2 = await ig('POST', '/' + (igId || 'me') + '/messages', {
     recipient: { comment_id: commentId }, message: { text: text2 },
   });
@@ -145,9 +152,17 @@ for (const entry of body.entry || []) {
   if (!account || !account.access_token) continue; // akun belum login ke panel
   token = account.access_token;
   igId = String(account.ig_user_id);
-  const bill = billingBy[igId];
+  const gid = groupOf(account);
+  const bill = billingBy[gid];
   if (bill && isTrue(bill.suspended)) continue; // dinonaktifkan superadmin
   plan = effectivePlan(bill, plans);
+  if (!activeInGroup(account, accountList, plan)) continue; // melebihi jumlah akun paket (mis. setelah turun paket)
+  if (!groups[gid]) {
+    const t = groupUsage(usageRows, accountList, gid);
+    const c = creditBy[gid] || {};
+    groups[gid] = { dm: t.dm, ai: t.ai, granted: Number(c.granted) || 0, used: Number(c.used) || 0, changed: false };
+  }
+  g = groups[gid];
   if (!usage[igId]) {
     const row = usageBy[igId] || {};
     usage[igId] = { dm: Number(row.dm) || 0, ai: Number(row.ai) || 0, ai_tokens: Number(row.ai_tokens) || 0, comments: Number(row.comments) || 0, changed: false };
@@ -184,7 +199,7 @@ for (const entry of body.entry || []) {
         quotaLog({ what: 'DM', limit: plan.dm, rule, uid, username, ref: cid, media });
       } else if (rule.dm_message) {
         const r = await privateReply(cid, rule, username);
-        if (r.ok) { u.dm++; u.changed = true; }
+        if (r.ok) countDm();
         log({ type: 'private_reply', status: r.ok ? 'ok' : 'error', rule, uid: (r.body && r.body.recipient_id) || uid, username, ref: cid, media, text: r.text, error: r.error });
         if (r.ok) queueFollowup(rule, (r.body && r.body.recipient_id) || uid, username);
       }
@@ -193,12 +208,14 @@ for (const entry of body.entry || []) {
 
     const aiRule = cand.find(r => r.ai_fallback === true || r.ai_fallback === 'true');
     if (aiRule && account.ai_enabled !== false && settings.gemini_enabled !== 'false' && text.trim()) {
-      if (!(u.ai < Number(plan.ai || 0))) {
-        if (Number(plan.ai || 0) > 0) quotaLog({ what: 'balasan AI', limit: plan.ai, rule: aiRule, uid, username, ref: cid, media });
+      // Kuota AI paket dulu, lalu kredit top-up (tidak hangus)
+      if (g.ai < Number(plan.ai || 0)) { u.ai++; g.ai++; }
+      else if (creditBalance(g) > 0) { g.used++; g.changed = true; }
+      else {
+        if (Number(plan.ai || 0) > 0 || g.granted > 0) quotaLog({ what: 'balasan AI (dan kredit top-up)', limit: plan.ai, rule: aiRule, uid, username, ref: cid, media });
         continue;
       }
       const persona = (plan.persona && account.ai_persona) || settings.gemini_persona || '';
-      u.ai++;
       // Estimasi token (±4 karakter/token): prompt + jawaban maks ~150 token
       u.ai_tokens += Math.ceil((persona.length + String(aiRule.ai_context || '').length + text.length + 400) / 4) + 150;
       u.changed = true;
@@ -244,9 +261,9 @@ for (const entry of body.entry || []) {
     if (!rule || !reply) continue;
     if (!dmLeft()) { quotaLog({ what: 'DM', limit: plan.dm, rule, uid, username, ref: mid }); continue; }
 
-    const message = quick ? { text: fill(reply, username), quick_replies: quick } : { text: fill(reply, username) };
+    const message = quick ? { text: wm(fill(reply, username)), quick_replies: quick } : { text: wm(fill(reply, username)) };
     const r = await ig('POST', '/' + (igId || 'me') + '/messages', { recipient: { id: uid }, message });
-    if (r.ok) { u.dm++; u.changed = true; }
+    if (r.ok) countDm();
     log({ type: 'dm_out', status: r.ok ? 'ok' : 'error', rule, uid, username, ref: mid, text: message.text, error: r.error });
     if (r.ok && !payload) queueFollowup(rule, uid, username);
   }
@@ -254,5 +271,9 @@ for (const entry of body.entry || []) {
 
 for (const [id, x] of Object.entries(usage)) {
   if (x.changed) out.push({ json: { kind: 'usage', account_id: id, month, dm: x.dm, ai: x.ai, ai_tokens: x.ai_tokens, comments: x.comments } });
+}
+// Engine hanya menulis kolom `used`; `granted` ditulis workflow Billing/superadmin
+for (const [id, x] of Object.entries(groups)) {
+  if (x.changed) out.push({ json: { kind: 'credits', account_id: id, used: x.used } });
 }
 return out;

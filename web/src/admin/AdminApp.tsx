@@ -326,6 +326,8 @@ function UsersTab({ guard }: { guard: Guard }) {
               <span>Masa aktif</span><b>{u.plan === 'free' ? '-' : date(u.period_end)}{u.source === 'manual' ? ' (manual)' : ''}</b>
               <span>DM bulan ini</span><b>{fmt(u.usage.dm)} / {fmt(u.limits.dm)}</b>
               <span>AI bulan ini</span><b>{fmt(u.usage.ai)} / {fmt(u.limits.ai)}</b>
+              <span>Kredit AI</span><b>{fmt(u.credits)}{u.credits_used ? <span className="muted"> ({fmt(u.credits_used)} terpakai)</span> : null}</b>
+              {u.owner_id ? <><span>Grup</span><b>akun tambahan @{u.owner_username}{!u.active ? ' · nonaktif' : ''}</b></> : u.group_size > 1 ? <><span>Grup</span><b>pemilik, {u.group_size} akun</b></> : null}
               <span>Automasi</span><b>{u.rules}</b>
               <span>Aktivitas</span><b>{u.last_event_at ? timeAgo(u.last_event_at) : '-'}</b>
               <span>Daftar</span><b>{date(u.created_at)}</b>
@@ -350,6 +352,7 @@ function UserEditor({ user, plans, onClose, onSaved, guard }: { user: UserRow; p
   const [note, setNote] = useState(user.note)
   const [busy, setBusy] = useState('')
   const [confirm, setConfirm] = useState<'' | 'revoke'>('')
+  const [credits, setCredits] = useState('')
 
   const run = async (label: string, action: string, payload: unknown, done?: string) => {
     setBusy(label)
@@ -379,6 +382,14 @@ function UserEditor({ user, plans, onClose, onSaved, guard }: { user: UserRow; p
         <Switch checked={!suspended} onChange={(on) => setSuspended(!on)} label={suspended ? 'Dinonaktifkan: bot berhenti & tidak bisa login' : 'Akun aktif'} />
         <Field label="Catatan internal">
           <input className="input" maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} placeholder="mis. bonus 1 bulan, mitra, …" />
+        </Field>
+        <Field label="Kredit AI grup" hint={user.owner_id ? `Dicatat di pemilik langganan @${user.owner_username}.` : `Saldo ${fmt(user.credits)} kredit. Isi angka negatif untuk mengurangi.`}>
+          <div className="row" style={{ flexWrap: 'nowrap' }}>
+            <input className="input" type="number" value={credits} onChange={(e) => setCredits(e.target.value)} placeholder="mis. 100" />
+            <button className="btn sm" disabled={!!busy || !Number(credits)} onClick={() => run('credits', 'sa.user.credits', { account_id: user.owner_id || user.ig_user_id, delta: Number(credits) }, 'Kredit diperbarui')}>
+              {busy === 'credits' ? <Spinner /> : 'Terapkan'}
+            </button>
+          </div>
         </Field>
         <div className="row">
           <button className="btn sm" disabled={!!busy} onClick={() => setConfirm('revoke')}>Paksa keluar</button>
@@ -421,7 +432,7 @@ function PaymentsTab({ guard }: { guard: Guard }) {
                   <tr key={p.id}>
                     <td>{date(p.paid_at || p.createdAt)}</td>
                     <td>{p.username ? '@' + p.username : <span className="muted">{p.account_id || '?'}</span>}</td>
-                    <td>{p.plan}{p.kind === 'renewal' ? ' ↻' : ''}</td>
+                    <td>{p.kind === 'topup' ? `${fmt(p.credits || 0)} kredit AI` : p.plan}{p.kind === 'renewal' ? ' ↻' : ''}</td>
                     <td>{rupiah(p.amount)}</td><td>{rupiah(p.fee || 0)}</td>
                     <td><span className={'badge ' + (PAY_COLOR[p.status] || '')}>{p.status}</span>{p.note && <div className="small muted">{p.note}</div>}</td>
                     <td>{p.payment_type || '-'}</td>
@@ -450,13 +461,13 @@ function PlansTab({ guard }: { guard: Guard }) {
     setBusy(true)
     try { await saApi('sa.plans.save', { plans }); toast('Paket tersimpan'); load() } catch (e) { guard(e) } finally { setBusy(false) }
   }
-  const NUMS: [keyof Plan, string, string][] = [['price', 'Harga / bulan (Rp)', ''], ['dm', 'DM / bulan', ''], ['ai', 'Balasan AI / bulan', '0 = tanpa AI'], ['rules', 'Maks automasi', '0 = tanpa batas']]
+  const NUMS: [keyof Plan, string, string][] = [['price', 'Harga / bulan (Rp)', ''], ['dm', 'DM / bulan', ''], ['ai', 'Balasan AI / bulan', '0 = tanpa AI'], ['rules', 'Maks automasi', '0 = tanpa batas'], ['accounts', 'Akun Instagram', 'kuota dibagi bersama']]
   return (
     <>
       <div className="page-head">
         <div><h1>Paket & harga</h1><p>Berlaku langsung untuk kuota, checkout, dan halaman harga (cache landing ±15 menit).</p></div>
         <div className="row">
-          <button className="btn" onClick={() => setPlans([...plans, { id: 'baru' + plans.length, name: 'Paket baru', price: 149000, dm: 10000, ai: 5000, rules: 0, followup: true, persona: true }])}>+ Paket</button>
+          <button className="btn" onClick={() => setPlans([...plans, { id: 'baru' + plans.length, name: 'Paket baru', price: 149000, dm: 10000, ai: 2000, rules: 0, followup: true, persona: true, accounts: 3, analytics: false, watermark: false }])}>+ Paket</button>
           <button className="btn dark" disabled={busy} onClick={save}>{busy ? <Spinner /> : 'Simpan paket'}</button>
         </div>
       </div>
@@ -478,6 +489,8 @@ function PlansTab({ guard }: { guard: Guard }) {
             ))}
             <Switch checked={p.followup} onChange={(v) => set(i, 'followup', v)} label="Follow-up DM" />
             <Switch checked={p.persona} onChange={(v) => set(i, 'persona', v)} label="Persona AI sendiri" />
+            <Switch checked={!!p.analytics} onChange={(v) => set(i, 'analytics', v)} label="Dasbor analitik" />
+            <Switch checked={!!p.watermark} onChange={(v) => set(i, 'watermark', v)} label='Tanda "via Wanychat" di DM' />
           </section>
         ))}
       </div>
@@ -504,6 +517,10 @@ const GROUPS: { title: string; desc: string; fields: Def[] }[] = [
     { key: 'gemini_enabled', label: 'Balasan AI aktif (global)', kind: 'bool' },
     { key: 'gemini_persona', label: 'Persona bawaan', kind: 'area', hint: 'Dipakai paket tanpa persona sendiri.' },
     { key: 'cost_ai_per_1m_idr', label: 'Biaya AI per 1 juta token (Rp)', kind: 'number', hint: 'Untuk estimasi biaya; lihat tarif DeepSeek.' },
+    { key: 'ai_topups', label: 'Paket top-up kredit AI (JSON)', kind: 'area', hint: 'Kosongkan = bawaan. Format [{"id":"ai100","credits":100,"price":10000}, …]; id diawali "ai". Fee DOKU ditambahkan ke pelanggan.' },
+  ] },
+  { title: 'Promosi', desc: 'Paket dengan opsi "Tanda via Wanychat" (bawaan: Gratis).', fields: [
+    { key: 'watermark_text', label: 'Teks tanda di akhir DM', hint: 'Kosongkan = "⚡ Dikirim otomatis via Wanychat · wanychat.remot.in". Maks 200 karakter.' },
   ] },
   { title: 'DOKU', desc: 'Pembayaran paket (DOKU Checkout). Fee DOKU + PPN ditambahkan ke tagihan pelanggan.', fields: [
     { key: 'doku_env', label: 'Mode', kind: 'select', options: ['production', 'sandbox'] },

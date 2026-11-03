@@ -12,8 +12,12 @@ const G = 'https://graph.instagram.com/' + (settings.graph_version || 'v23.0');
 const plans = loadPlans(settings);
 const month = monthKey();
 const billingBy = latestBy($('Baca Billing').all().map(i => i.json), 'account_id');
-const usageBy = latestBy($('Baca Usage').all().map(i => i.json).filter(u => u.month === month), 'account_id');
+const usageRows = $('Baca Usage').all().map(i => i.json).filter(u => u.month === month);
+const usageBy = latestBy(usageRows, 'account_id');
+const accountList = Object.values(accounts);
 const usage = {};
+const groups = {}; // kuota DM dibagi bersama per langganan
+const groupOfId = (id) => { if (!groups[id]) groups[id] = groupUsage(usageRows, accountList, id); return groups[id]; };
 const useOf = (id) => {
   if (!usage[id]) {
     const r = usageBy[id] || {};
@@ -41,13 +45,18 @@ for (const item of $('Baca Follow Up Pending').all()) {
     continue;
   }
   if (settings.engine_enabled === 'false') continue;
-  const bill = billingBy[String(f.account_id)];
+  const gid = groupOf(acc);
+  const bill = billingBy[gid];
   const plan = effectivePlan(bill, plans);
   const u = useOf(String(f.account_id));
-  if ((bill && isTrue(bill.suspended)) || !plan.followup || u.dm >= Number(plan.dm || 0)) {
-    out.push({ json: { kind: 'update', id: f.id, status: 'expired', sent_at: null, error: bill && isTrue(bill.suspended) ? 'akun dinonaktifkan' : !plan.followup ? 'follow-up tidak termasuk paket ' + plan.name : 'kuota DM bulan ini habis' } });
+  const gu = groupOfId(gid);
+  const inactive = !activeInGroup(acc, accountList, plan);
+  if ((bill && isTrue(bill.suspended)) || inactive || !plan.followup || gu.dm >= Number(plan.dm || 0)) {
+    out.push({ json: { kind: 'update', id: f.id, status: 'expired', sent_at: null, error: bill && isTrue(bill.suspended) ? 'akun dinonaktifkan'
+      : inactive ? 'akun melebihi jumlah akun paket ' + plan.name : !plan.followup ? 'follow-up tidak termasuk paket ' + plan.name : 'kuota DM bulan ini habis' } });
     continue;
   }
+  const text = withWatermark(f.message, plan, settings);
   if (!windowOpen) {
     // Tunggu user berinteraksi; kalau 24 jam lewat jatuh tempo, anggap kedaluwarsa
     if (now - due > DAY) {
@@ -62,7 +71,7 @@ for (const item of $('Baca Follow Up Pending').all()) {
     const res = await helpers.httpRequest({
       method: 'POST', url: G + '/' + acc.ig_user_id + '/messages',
       qs: { access_token: acc.access_token },
-      body: { recipient: { id: f.ig_user_id }, message: { text: f.message } },
+      body: { recipient: { id: f.ig_user_id }, message: { text } },
       json: true, ignoreHttpStatusErrors: true, returnFullResponse: true, timeout: 20000,
     });
     const b = res.body || {};
@@ -71,11 +80,11 @@ for (const item of $('Baca Follow Up Pending').all()) {
   } catch (err) {
     error = err.message;
   }
-  if (ok) { u.dm++; u.changed = true; }
+  if (ok) { u.dm++; gu.dm++; u.changed = true; }
   out.push({ json: { kind: 'update', id: f.id, status: ok ? 'sent' : 'error', sent_at: ok ? new Date().toISOString() : null, error } });
   out.push({ json: {
     kind: 'log', account_id: String(f.account_id || ''), type: 'followup', status: ok ? 'ok' : 'error', rule_id: String(f.rule_id || ''), rule_name: '',
-    ig_user_id: f.ig_user_id, username: f.username || '', ref_id: String(f.id), media_id: '', text: f.message, error,
+    ig_user_id: f.ig_user_id, username: f.username || '', ref_id: String(f.id), media_id: '', text, error,
   } });
 }
 for (const [id, x] of Object.entries(usage)) {

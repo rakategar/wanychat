@@ -64,6 +64,19 @@ export interface Account {
   ai_enabled: boolean
   ai_persona: string
   connected_at: string
+  owner_id: string
+}
+
+// Akun Instagram dalam satu langganan (pemilik + akun tambahan)
+export interface Member {
+  ig_user_id: string
+  username: string
+  name: string
+  avatar: string
+  owner: boolean
+  current: boolean
+  active: boolean
+  connected_at: string
 }
 
 export interface Media {
@@ -100,6 +113,30 @@ export interface Billing {
   usage: { dm: number; ai: number }
   month: string
   rules_used: number
+  credits: number
+  accounts_limit: number
+  accounts_used: number
+  group_inactive: boolean
+  is_owner: boolean
+  owner_username: string
+}
+
+export interface Analytics {
+  days: number
+  since: string
+  events: number
+  truncated: boolean
+  totals: {
+    comments: number; matched: number; dms: number; taps: number; followups: number; ai: number; dm_in: number
+    errors: number; quota: number; leads: number; commenters: number; match_rate: number; tap_rate: number
+  }
+  funnel: { key: string; label: string; value: number }[]
+  series: { date: string; comments: number; leads: number; dms: number; taps: number }[]
+  posts: { media_id: string; comments: number; commenters: number; matched: number; dms: number; taps: number; ai: number; leads: number; tap_rate: number }[]
+  rules: { rule_id: string; name: string; matched: number; dms: number; taps: number; followups: number; ai: number; tap_rate: number }[]
+  hours: number[][]
+  words: { word: string; count: number }[]
+  leads: { ig_user_id: string; username: string; score: number; comments: number; taps: number; dms_in: number; posts: string[]; first_at: string; last_at: string; last_text: string }[]
 }
 
 export interface Payment {
@@ -109,12 +146,14 @@ export interface Payment {
   status: string
   payment_type: string
   kind: string
+  credits?: number
   paid_at: string | null
   createdAt: string
 }
 
 // Login lewat Instagram: n8n memasang cookie sesi HttpOnly, browser mengirimnya otomatis ke /api
 export const LOGIN_URL = '/webhook/wany-login'
+export const LINK_URL = '/webhook/wany-login?link=1'
 
 export class ApiError extends Error {
   data?: Record<string, unknown>
@@ -150,6 +189,13 @@ async function post<T>(url: string, headers: Record<string, string>, action: str
   }
   if (!data.ok) throw Object.assign(new ApiError(data.error || 'Permintaan gagal', res.status), { data })
   return data as T
+}
+
+// Pindah dasbor antar akun Instagram dalam satu langganan (sesi login yang sama)
+export async function switchAccount(id: string) {
+  await api('accounts.switch', { ig_user_id: id })
+  window.location.hash = '#/dashboard'
+  window.location.reload()
 }
 
 export const emptyRule = (): Rule => ({

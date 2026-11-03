@@ -87,7 +87,7 @@ export default function Dashboard({ account, billing, go }: { account: Account; 
           </div>
           <div className="grid quota-grid">
             <Meter label="DM bulan ini" used={billing.usage.dm} limit={billing.plan.dm} />
-            <Meter label="Balasan AI" used={billing.usage.ai} limit={billing.plan.ai} none="Mulai paket Kreator" />
+            <Meter label="Balasan AI" used={billing.usage.ai} limit={billing.plan.ai} none={billing.credits > 0 ? `${billing.credits.toLocaleString("id-ID")} kredit top-up` : "Mulai paket Kreator atau top-up"} />
           </div>
         </section>
       )}

@@ -123,7 +123,7 @@ export default function Activity() {
       {clearing && (
         <Confirm
           title="Bersihkan semua log?"
-          body="Semua log aktivitas dan antrean follow-up akan dihapus permanen. Automasi tidak terpengaruh."
+          body="Semua log aktivitas dan antrean follow-up akan dihapus permanen, termasuk data analitik. Automasi tidak terpengaruh."
           confirmLabel="Hapus semua"
           onCancel={() => setClearing(false)}
           onConfirm={async () => {

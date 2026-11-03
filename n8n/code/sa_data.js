@@ -19,6 +19,8 @@ const PAID = ['settlement', 'capture'];
 const num = (v) => Number(v) || 0;
 
 const usageBy = latestBy(usage.filter(u => u.month === month), 'account_id');
+const creditBy = latestBy(rows('Baca Kredit'), 'account_id');
+const nameOf = Object.fromEntries(accounts.map(a => [String(a.ig_user_id), a.username || '']));
 const lastEvent = {};
 const errors24 = {};
 for (const e of events) {
@@ -32,8 +34,10 @@ for (const r of rules) ruleCount[r.account_id] = (ruleCount[r.account_id] || 0) 
 
 const users = accounts.map(a => {
   const id = String(a.ig_user_id);
-  const b = billingBy[id] || null;
+  const gid = groupOf(a); // akun tambahan memakai langganan akun pemilik
+  const b = billingBy[gid] || null;
   const plan = effectivePlan(b, plans);
+  const c = creditBy[gid] || {};
   const u = usageBy[id] || {};
   return {
     ig_user_id: id, username: a.username || '', name: a.name || '', avatar: a.avatar || '',
@@ -46,6 +50,9 @@ const users = accounts.map(a => {
     usage: { dm: num(u.dm), ai: num(u.ai), ai_tokens: num(u.ai_tokens), comments: num(u.comments) },
     limits: { dm: num(plan.dm), ai: num(plan.ai), rules: num(plan.rules) },
     rules: ruleCount[id] || 0, last_event_at: lastEvent[id] ? new Date(lastEvent[id]).toISOString() : '',
+    owner_id: gid === id ? '' : gid, owner_username: gid === id ? '' : nameOf[gid] || gid,
+    group_size: accounts.filter(x => groupOf(x) === gid).length, active: activeInGroup(a, accounts, plan),
+    credits: creditBalance(c), credits_granted: num(c.granted), credits_used: num(c.used),
   };
 });
 
@@ -57,7 +64,7 @@ function overview() {
     d.setUTCMonth(d.getUTCMonth() - i);
     months.push(d.toISOString().slice(0, 7));
   }
-  const usdIdr = num(settings.usd_idr) || 16500;
+  const usdIdr = num(settings.usd_idr) || 18000;
   const fixedCost = num(settings.cost_server_idr) + num(settings.cost_other_idr);
   const aiPer1m = num(settings.cost_ai_per_1m_idr);
   const byMonth = months.map(m => {
@@ -72,8 +79,8 @@ function overview() {
       new_users: accounts.filter(a => monthKey(a.createdAt) === m).length,
     };
   });
-  const paidUsers = users.filter(x => x.plan !== 'free');
-  const mrr = users.filter(x => x.plan !== 'free' && x.source === 'doku').reduce((s, x) => s + num((plans.find(p => p.id === x.plan) || {}).price), 0);
+  const paidUsers = users.filter(x => x.plan !== 'free' && !x.owner_id);
+  const mrr = users.filter(x => x.plan !== 'free' && !x.owner_id && x.source === 'doku').reduce((s, x) => s + num((plans.find(p => p.id === x.plan) || {}).price), 0);
   const thisMonth = usage.filter(u => u.month === month);
   return {
     month, usd_idr: usdIdr,

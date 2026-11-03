@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, type Billing, type Payment } from '../api'
-import { planFeatures, rupiah, rupiahShort, fmt, type Plan } from '../plans'
+import { planFeatures, rupiah, rupiahShort, fmt, type Plan, type Topup } from '../plans'
 import { Confirm, Spinner, useToast } from '../components/ui'
 
 const STATUS: Record<string, { label: string; color: string }> = {
@@ -15,6 +15,8 @@ const STATUS: Record<string, { label: string; color: string }> = {
   amount_mismatch: { label: 'perlu dicek', color: 'red' },
 }
 type Method = { id: string; label: string; totals: Record<string, number> }
+// Yang sedang dibayar: paket langganan atau top-up kredit AI
+type Item = { kind: 'plan' | 'topup'; id: string; name: string; price: number }
 const date = (iso?: string | null) => (iso ? new Date(iso).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '-')
 
 export default function BillingPage({ billing: initial, reload }: { billing: Billing | null; reload: () => Promise<unknown> }) {
@@ -24,18 +26,20 @@ export default function BillingPage({ billing: initial, reload }: { billing: Bil
   const [enabled, setEnabled] = useState(true)
   const [payments, setPayments] = useState<Payment[] | null>(null)
   const [methods, setMethods] = useState<Method[]>([])
-  const [choose, setChoose] = useState<Plan | null>(null)
+  const [topups, setTopups] = useState<Topup[]>([])
+  const [choose, setChoose] = useState<Item | null>(null)
   const [method, setMethod] = useState('')
   const [busy, setBusy] = useState(false)
   const [waiting, setWaiting] = useState(() => window.location.hash.includes('paid=1'))
 
   const load = useCallback(async () => {
     const [b, p] = await Promise.all([
-      api<{ billing: Billing; plans: Plan[]; payments_enabled: boolean; methods: Method[] }>('billing.get'),
+      api<{ billing: Billing; plans: Plan[]; topups: Topup[]; payments_enabled: boolean; methods: Method[] }>('billing.get'),
       api<{ payments: Payment[] }>('billing.payments'),
     ])
     setBilling(b.billing)
     setPlans(b.plans)
+    setTopups(b.topups || [])
     setEnabled(b.payments_enabled && b.methods.length > 0)
     setMethods(b.methods)
     setPayments(p.payments)
@@ -63,10 +67,10 @@ export default function BillingPage({ billing: initial, reload }: { billing: Bil
     return () => clearInterval(t)
   }, [waiting, load, reload, toast])
 
-  const checkout = async (plan: Plan, method: string) => {
+  const checkout = async (item: Item, method: string) => {
     setBusy(true)
     try {
-      const r = await api<{ redirect_url: string }>('billing.checkout', { plan: plan.id, method })
+      const r = await api<{ redirect_url: string }>('billing.checkout', item.kind === 'topup' ? { topup: item.id, method } : { plan: item.id, method })
       window.location.href = r.redirect_url
     } catch (e) {
       toast((e as Error).message, 'error')
@@ -102,6 +106,8 @@ export default function BillingPage({ billing: initial, reload }: { billing: Bil
           <div className="small">
             {!paid && 'Paket gratis selamanya. Upgrade kapan saja untuk kuota lebih besar, follow-up, dan AI.'}
             {paid && <>Aktif sampai <b>{date(billing.period_end)}</b>.{billing.source !== 'manual' && ' Bayar lagi sebelum tanggal itu untuk memperpanjang 1 bulan (sisa masa aktif tidak hilang).'}</>}
+            {billing.accounts_limit > 1 && <div style={{ marginTop: 6 }}>{billing.accounts_used} dari {billing.accounts_limit} akun Instagram terpakai. <a href="#/settings">Kelola akun</a></div>}
+            {!billing.is_owner && billing.owner_username && <div style={{ marginTop: 6 }}>Langganan grup milik <b>@{billing.owner_username}</b>. Pembayaran dari akun ini memperpanjang paket grup.</div>}
             {billing.status === 'past_due' && <div className="callout pink" style={{ marginTop: 10 }}>Tagihan bulan ini gagal. Perbarui pembayaran supaya paket tidak turun ke Gratis.</div>}
           </div>
         </section>
@@ -109,9 +115,10 @@ export default function BillingPage({ billing: initial, reload }: { billing: Bil
         <section className="card stack">
           <h2 className="card-title">Pemakaian {new Date(billing.month + '-01').toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}</h2>
           <Meter label="DM otomatis" used={billing.usage.dm} limit={plan.dm} />
-          <Meter label="Balasan AI" used={billing.usage.ai} limit={plan.ai} none="Tidak termasuk paket" />
+          <Meter label="Balasan AI" used={billing.usage.ai} limit={plan.ai} none={billing.credits > 0 ? 'Memakai kredit top-up' : 'Tidak termasuk paket'} />
+          {billing.credits > 0 && <div className="small"><b>+ {fmt(billing.credits)} kredit AI</b> dipakai setelah kuota bulanan habis.</div>}
           <Meter label="Automasi" used={billing.rules_used} limit={plan.rules} unlimited="Tanpa batas" />
-          <p className="hint">Kuota direset setiap tanggal 1. Balasan komentar publik tidak dihitung.</p>
+          <p className="hint">Kuota direset setiap tanggal 1{billing.accounts_limit > 1 ? ' dan dipakai bersama semua akun di langganan ini' : ''}. Balasan komentar publik tidak dihitung.</p>
         </section>
       </div>
 
@@ -129,7 +136,7 @@ export default function BillingPage({ billing: initial, reload }: { billing: Bil
                 <ul className="plan-list">{planFeatures(p).map((f) => <li key={f}>{f}</li>)}</ul>
                 {p.price > 0 && (
                   <button className={'btn ' + (current ? '' : 'dark')} style={{ marginTop: 'auto' }}
-                    disabled={!enabled || busy} onClick={() => { setChoose(p); setMethod(methods[0]?.id || '') }}>
+                    disabled={!enabled || busy} onClick={() => { setChoose({ kind: 'plan', id: p.id, name: 'Langganan ' + p.name, price: p.price }); setMethod(methods[0]?.id || '') }}>
                     {current ? 'Perpanjang' : plan.price > p.price ? 'Turun ke ' + p.name : 'Upgrade ke ' + p.name}
                   </button>
                 )}
@@ -143,6 +150,28 @@ export default function BillingPage({ billing: initial, reload }: { billing: Bil
         Biaya layanan metode bayar ditambahkan ke total. Ganti paket berlaku langsung tanpa prorata.
       </p>
 
+      {topups.length > 0 && (
+        <section className="card stack tint-green" style={{ marginTop: 28 }}>
+          <div className="row between">
+            <div>
+              <h2 className="card-title" style={{ margin: 0 }}>Top-up kredit balasan AI</h2>
+              <p className="small" style={{ margin: '4px 0 0' }}>Kredit tidak hangus dan dipakai otomatis setelah kuota AI bulanan habis.{plan.ai === 0 && ' Di paket Gratis, kredit membuka fitur Balasan AI.'}</p>
+            </div>
+            <div className="plan-price">{fmt(billing.credits)}<span> kredit</span></div>
+          </div>
+          <div className="topups">
+            {topups.map((t) => (
+              <button key={t.id} className="card plan topup" disabled={!enabled || busy}
+                onClick={() => { setChoose({ kind: 'topup', id: t.id, name: fmt(t.credits) + ' kredit AI', price: t.price }); setMethod(methods[0]?.id || '') }}>
+                <b style={{ fontSize: 22 }}>{fmt(t.credits)} kredit</b>
+                <span>{rupiah(t.price)}</span>
+                <span className="small muted">{rupiah(t.price / t.credits)} / balasan</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
       <section className="card" style={{ marginTop: 28 }}>
         <h2 className="card-title">Riwayat pembayaran</h2>
         {!payments ? <Spinner /> : payments.length === 0 ? <p className="muted" style={{ margin: 0 }}>Belum ada pembayaran.</p> : (
@@ -155,7 +184,7 @@ export default function BillingPage({ billing: initial, reload }: { billing: Bil
                   return (
                     <tr key={x.order_id}>
                       <td>{date(x.paid_at || x.createdAt)}</td>
-                      <td>{plans?.find((p) => p.id === x.plan)?.name || x.plan}</td>
+                      <td>{x.kind === 'topup' ? `${fmt(x.credits || 0)} kredit AI` : plans?.find((p) => p.id === x.plan)?.name || x.plan}</td>
                       <td>{rupiah(x.amount)}</td>
                       <td><span className={'badge ' + st.color}>{st.label}</span></td>
                       <td className="mono">{x.order_id}</td>
@@ -170,10 +199,10 @@ export default function BillingPage({ billing: initial, reload }: { billing: Bil
 
       {choose && (
         <Confirm
-          title={`Langganan ${choose.name}`}
+          title={choose.name}
           tone="primary"
           body={<>
-            <p style={{ marginTop: 0 }}>Paket {choose.name} <b>{rupiah(choose.price)}</b> untuk 1 bulan. Pilih cara bayar:</p>
+            <p style={{ marginTop: 0 }}>{choose.kind === 'plan' ? <>{choose.name} <b>{rupiah(choose.price)}</b> untuk 1 bulan.</> : <>{choose.name} <b>{rupiah(choose.price)}</b>, tidak hangus.</>} Pilih cara bayar:</p>
             <div className="pay-methods" role="radiogroup">
               {methods.map((m) => (
                 <label key={m.id} className={'pay-method' + (m.id === method ? ' on' : '')}>

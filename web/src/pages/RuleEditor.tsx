@@ -9,11 +9,12 @@ interface Props {
   mediaError: string
   username: string
   plan: Plan | null
+  credits?: number
   onCancel: () => void
   onSaved: () => void
 }
 
-export default function RuleEditor({ initial, media, mediaError, username, plan, onCancel, onSaved }: Props) {
+export default function RuleEditor({ initial, media, mediaError, username, plan, credits = 0, onCancel, onSaved }: Props) {
   const toast = useToast()
   const [r, setR] = useState<Rule>(initial)
   const [busy, setBusy] = useState(false)
@@ -48,7 +49,7 @@ export default function RuleEditor({ initial, media, mediaError, username, plan,
   const sample = (tpl: string) => tpl.replace(/\{username\}/gi, '@pembeli').replace(/\{nama\}/gi, 'pembeli')
   const firstKeyword = r.keywords.split(',')[0]?.trim() || 'info'
   const canFollowup = !plan || plan.followup
-  const canAi = !plan || plan.ai > 0
+  const canAi = !plan || plan.ai > 0 || credits > 0
   const locked = (what: string) => <p className="hint"><span className="badge orange">Kreator+</span> {what} tersedia mulai paket Kreator. <a href="#/billing">Lihat paket</a></p>
 
   return (
@@ -164,7 +165,7 @@ export default function RuleEditor({ initial, media, mediaError, username, plan,
 
           {r.channel === 'comment' && (
             <Section n={6} title="Balasan AI" right={<Switch checked={r.ai_fallback} disabled={!canAi && !r.ai_fallback} onChange={(v) => set('ai_fallback', v)} />}>
-              {!canAi ? locked('Balasan AI') : r.ai_fallback ? (
+              {!canAi ? <p className="hint"><span className="badge orange">Kreator+</span> Balasan AI tersedia mulai paket Kreator, atau beli top-up kredit AI. <a href="#/billing">Lihat paket</a></p> : r.ai_fallback ? (
                 <Field label="Konteks produk untuk AI" hint="Komentar di post ini yang TIDAK cocok keyword akan dijawab AI di kolom komentar berdasarkan konteks ini.">
                   <textarea className="input" rows={4} value={r.ai_context} onChange={(e) => set('ai_context', e.target.value)} placeholder="Nama produk, harga, cara order, jadwal, FAQ…" />
                 </Field>

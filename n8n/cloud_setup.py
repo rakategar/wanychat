@@ -33,7 +33,7 @@ COLUMNS = {
                   'due_at': 'date', 'message': 'string', 'status': 'string', 'sent_at': 'date', 'error': 'string'},
     'accounts': {'ig_user_id': 'string', 'username': 'string', 'name': 'string', 'avatar': 'string',
                  'access_token': 'string', 'token_expires_at': 'date', 'token_refresh_error': 'string',
-                 'ai_enabled': 'boolean', 'ai_persona': 'string', 'connected_at': 'date'},
+                 'ai_enabled': 'boolean', 'ai_persona': 'string', 'connected_at': 'date', 'owner_id': 'string'},
     'sessions': {'token': 'string', 'ig_user_id': 'string', 'expires_at': 'date'},
     # langganan & superadmin
     'billing': {'account_id': 'string', 'plan': 'string', 'status': 'string', 'period_end': 'date',
@@ -42,11 +42,13 @@ COLUMNS = {
                 'note': 'string'},
     'payments': {'order_id': 'string', 'account_id': 'string', 'plan': 'string', 'amount': 'number', 'status': 'string',
                  'payment_type': 'string', 'kind': 'string', 'transaction_id': 'string', 'paid_at': 'date',
-                 'fee': 'number', 'note': 'string'},
+                 'fee': 'number', 'note': 'string', 'credits': 'number'},
     'usage': {'account_id': 'string', 'month': 'string', 'dm': 'number', 'ai': 'number', 'ai_tokens': 'number',
               'comments': 'number'},
     'admin_sessions': {'token_hash': 'string', 'expires_at': 'date', 'ip': 'string', 'ua': 'string'},
     'audit': {'actor': 'string', 'action': 'string', 'target': 'string', 'detail': 'string', 'ip': 'string'},
+    # kredit balasan AI per grup langganan: granted ditulis Billing/superadmin, used ditulis Engine
+    'credits': {'account_id': 'string', 'granted': 'number', 'used': 'number'},
 }
 # Kunci settings yang masih dipakai kode; sisanya warisan versi Telegram
 KEEP_SETTINGS = ['graph_version', 'gemini_enabled', 'gemini_persona', 'app_secret', 'ig_app_id']

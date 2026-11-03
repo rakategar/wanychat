@@ -54,6 +54,7 @@ export default function Automations({ account, billing }: { account: Account; bi
         mediaError={mediaError}
         username={account.username}
         plan={billing?.plan || null}
+        credits={billing?.credits || 0}
         onCancel={() => setEditing(null)}
         onSaved={() => { setEditing(null); load() }}
       />

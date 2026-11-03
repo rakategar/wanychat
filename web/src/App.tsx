@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
-import { api, ApiError, type Account, type Billing } from './api'
+import { api, ApiError, switchAccount, type Account, type Billing, type Member } from './api'
 import { Brand, Spinner, useToast } from './components/ui'
 import Landing from './pages/Landing'
 import Dashboard from './pages/Dashboard'
@@ -7,16 +7,18 @@ import Automations from './pages/Automations'
 import Activity from './pages/Activity'
 import BillingPage from './pages/Billing'
 import SettingsPage from './pages/Settings'
+import AnalyticsPage from './pages/Analytics'
 
 // Dasbor superadmin dimuat terpisah: tidak ikut terunduh oleh pengguna biasa
 const AdminApp = lazy(() => import('./admin/AdminApp'))
 
-export type Page = 'dashboard' | 'automations' | 'activity' | 'billing' | 'settings'
+export type Page = 'dashboard' | 'automations' | 'activity' | 'analytics' | 'billing' | 'settings'
 
 const NAV: { id: Page; label: string; icon: string }[] = [
   { id: 'dashboard', label: 'Dasbor', icon: '🏠' },
   { id: 'automations', label: 'Automasi', icon: '⚡' },
   { id: 'activity', label: 'Aktivitas', icon: '📜' },
+  { id: 'analytics', label: 'Analitik', icon: '📊' },
   { id: 'billing', label: 'Langganan', icon: '💳' },
   { id: 'settings', label: 'Akun', icon: '👤' },
 ]
@@ -77,6 +79,7 @@ function UserApp() {
         setAuth('in')
         if (warn) toast(warn, 'error')
         const { params } = readHash()
+        if (params.get('linked') === '1') toast('Akun Instagram ditambahkan ke langganan kamu 🎉')
         if (params.size && !params.has('paid')) window.history.replaceState(null, '', '#/' + pageFromHash())
       })
       .catch((e) => {
@@ -144,6 +147,7 @@ function UserApp() {
               <div className="small muted">terhubung</div>
             </div>
           </div>
+          {billing && (billing.accounts_used > 1 || billing.accounts_limit > 1) && <AccountSwitcher current={account.ig_user_id} go={go} />}
           <button className="btn sm ghost" onClick={logout}>Keluar</button>
         </div>
       </aside>
@@ -160,9 +164,16 @@ function UserApp() {
 
       <main className="main">
         {announcement && <div className="callout yellow announce" role="status">📣 {announcement}</div>}
+        {billing?.group_inactive && (
+          <div className="callout pink announce" role="status">
+            Akun ini tidak aktif: paket {billing.plan.name} hanya untuk {billing.accounts_limit} akun Instagram. Automasi akun ini berhenti sampai paket dinaikkan
+            atau akun lain dilepas. <a href="#/billing">Lihat paket</a>
+          </div>
+        )}
         {page === 'dashboard' && <Dashboard account={account} billing={billing} go={go} />}
         {page === 'automations' && <Automations account={account} billing={billing} />}
         {page === 'activity' && <Activity />}
+        {page === 'analytics' && <AnalyticsPage billing={billing} go={go} />}
         {page === 'billing' && <BillingPage billing={billing} reload={loadAccount} />}
         {page === 'settings' && <SettingsPage account={account} billing={billing} reload={loadAccount} logout={logout} />}
       </main>
@@ -174,6 +185,28 @@ function UserApp() {
           </button>
         ))}
       </nav>
+    </div>
+  )
+}
+
+function AccountSwitcher({ current, go }: { current: string; go: (p: Page) => void }) {
+  const toast = useToast()
+  const [members, setMembers] = useState<Member[] | null>(null)
+  const [busy, setBusy] = useState('')
+  useEffect(() => { api<{ accounts: Member[] }>('accounts.list').then((r) => setMembers(r.accounts)).catch(() => setMembers([])) }, [current])
+  if (!members) return null
+  const others = members.filter((m) => m.ig_user_id !== current)
+  return (
+    <div className="switcher">
+      {others.map((m) => (
+        <button key={m.ig_user_id} className="switcher-item" disabled={!!busy} title="Buka dasbor akun ini"
+          onClick={async () => { setBusy(m.ig_user_id); try { await switchAccount(m.ig_user_id) } catch (e) { toast((e as Error).message, 'error'); setBusy('') } }}>
+          {m.avatar ? <img src={m.avatar} alt="" /> : <span className="avatar" />}
+          <span className="ellipsis">@{m.username}</span>
+          {busy === m.ig_user_id ? <Spinner /> : <span aria-hidden>⇄</span>}
+        </button>
+      ))}
+      <button className="switcher-item add" onClick={() => go('settings')}>＋ Kelola akun</button>
     </div>
   )
 }

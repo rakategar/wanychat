@@ -9,12 +9,13 @@ const out = [];
 const audit = (action, target, detail) => out.push({ json: { kind: 'audit', actor: 'scheduler', action, target: String(target || ''), detail: String(detail || '').slice(0, 1000), ip: '' } });
 const plans = loadPlans(settings);
 const billingBy = latestBy($('Baca Billing Sync').all().map(i => i.json), 'account_id');
+const creditBy = latestBy($('Baca Kredit Sync').all().map(i => i.json), 'account_id');
 const now = Date.now();
 const DAY = 24 * 3600 * 1000;
 
 // 1) Order pending dari 3 hari terakhir: tanya status ke DOKU. Lebih lama dari itu: tandai kedaluwarsa.
 const pending = $('Baca Pembayaran Sync').all().map(i => i.json)
-  .filter(x => x.order_id && x.status === 'pending' && x.kind === 'checkout' && x.account_id);
+  .filter(x => x.order_id && x.status === 'pending' && (x.kind === 'checkout' || x.kind === 'topup') && x.account_id);
 for (const known of pending.slice(0, 40)) {
   const age = now - new Date(known.createdAt || 0).getTime();
   if (age < 10 * 60 * 1000) continue;
@@ -28,11 +29,12 @@ for (const known of pending.slice(0, 40)) {
     if (r.status === 404 && age > DAY) out.push({ json: { kind: 'payment', payment: Object.assign({}, known, { status: 'expire', note: 'tidak pernah dibayar' }) } });
     continue;
   }
-  const res = applyDokuStatus(r.body, known, billingBy[String(known.account_id)], plans);
-  if (res.payment.status === known.status && !res.billing && !res.audits.length) continue;
+  const res = applyDokuStatus(r.body, known, billingBy[String(known.account_id)], plans, creditBy[String(known.account_id)]);
+  if (res.payment.status === known.status && !res.billing && !res.credits && !res.audits.length) continue;
   res.payment.note = res.payment.note || 'disinkron harian';
   out.push({ json: { kind: 'payment', payment: res.payment } });
   if (res.billing) { out.push({ json: { kind: 'billing', billing: res.billing } }); billingBy[String(known.account_id)] = res.billing; }
+  if (res.credits) { out.push({ json: { kind: 'credits', credits: res.credits } }); creditBy[String(known.account_id)] = Object.assign({}, creditBy[String(known.account_id)], res.credits); }
   for (const a of res.audits) audit(a[0], a[1], a[2] + ' (sinkron)');
 }
 

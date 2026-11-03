@@ -2,7 +2,9 @@
 const s = {};
 for (const it of $('Baca Settings Login').all()) if (it.json.key) s[it.json.key] = it.json.value ?? '';
 const base = String(s.public_url || '').replace(/\/$/, '');
-const state = $input.first().json.state;
+// ?link=1 = tambah akun Instagram ke langganan yang sedang login (mode dibawa di state, dicek lagi di callback)
+const link = String((($('Webhook Login').first().json.query) || {}).link || '') === '1';
+const state = $input.first().json.state + (link ? '-link' : '');
 if (!s.ig_app_id) {
   return [{ json: { location: base + '/#/login?error=' + encodeURIComponent('Login Instagram belum diaktifkan (Instagram App ID belum diisi admin).'), cookie: 'wany_state=; Path=/webhook; Max-Age=0' } }];
 }

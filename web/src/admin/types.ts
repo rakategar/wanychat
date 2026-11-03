@@ -62,6 +62,13 @@ export interface UserRow {
   limits: { dm: number; ai: number; rules: number }
   rules: number
   last_event_at: string
+  owner_id: string
+  owner_username: string
+  group_size: number
+  active: boolean
+  credits: number
+  credits_granted: number
+  credits_used: number
 }
 
 export interface PaymentRow {
@@ -78,6 +85,7 @@ export interface PaymentRow {
   paid_at: string | null
   fee: number
   note: string
+  credits?: number
   createdAt: string
 }
 

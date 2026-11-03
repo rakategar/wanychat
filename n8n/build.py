@@ -33,6 +33,7 @@ RULE_COLS = {
 ACCOUNT_COLS = {
     "ig_user_id": "string", "username": "string", "name": "string", "avatar": "string", "access_token": "string",
     "token_expires_at": "dateTime", "token_refresh_error": "string", "ai_enabled": "boolean", "ai_persona": "string",
+    "owner_id": "string",
 }
 BILLING_COLS = {
     "account_id": "string", "plan": "string", "status": "string", "period_end": "dateTime", "subscription_id": "string",
@@ -42,10 +43,11 @@ BILLING_COLS = {
 PAYMENT_COLS = {
     "order_id": "string", "account_id": "string", "plan": "string", "amount": "number", "status": "string",
     "payment_type": "string", "kind": "string", "transaction_id": "string", "paid_at": "dateTime", "fee": "number",
-    "note": "string",
+    "note": "string", "credits": "number",
 }
 USAGE_COLS = {"account_id": "string", "month": "string", "dm": "number", "ai": "number", "ai_tokens": "number",
               "comments": "number"}
+CREDIT_COLS = {"account_id": "string", "granted": "number", "used": "number"}
 AUDIT_COLS = {"actor": "string", "action": "string", "target": "string", "detail": "string", "ip": "string"}
 MONTH = "={{ $now.setZone('Asia/Jakarta').toFormat('yyyy-MM') }}"
 
@@ -80,10 +82,10 @@ def conditions(filters):
     return {"conditions": [{"keyName": k, "condition": c, "keyValue": v} for k, c, v in filters]}
 
 
-def dt_get(name, pos, key, filters=None, order=None, limit=None, **extra):
+def dt_get(name, pos, key, filters=None, order=None, limit=None, match="all", **extra):
     p = {"resource": "row", "operation": "get", "dataTableId": table(key), "returnAll": limit is None}
     if filters:
-        p["matchType"] = "allConditions"
+        p["matchType"] = "anyCondition" if match == "any" else "allConditions"
         p["filters"] = conditions(filters)
     if limit is not None:
         p["limit"] = limit
@@ -192,6 +194,12 @@ def billing_write(name, pos, **extra):
                     types=BILLING_COLS, filters=[("account_id", "eq", "={{ $json.billing.account_id }}")], **extra)
 
 
+def credits_write(name, pos, col, src="$json.credits.", **extra):
+    """Engine hanya menulis `used`, Billing/superadmin hanya `granted` -> tidak saling menimpa."""
+    return dt_write(name, pos, "credits", "upsert", {"account_id": "={{ " + src + "account_id }}", col: "={{ " + src + col + " }}"},
+                    types=CREDIT_COLS, filters=[("account_id", "eq", "={{ " + src + "account_id }}")], **extra)
+
+
 def payment_write(name, pos, **extra):
     return dt_write(name, pos, "payments", "upsert", {c: "={{ $json.payment." + c + " }}" for c in PAYMENT_COLS},
                     types=PAYMENT_COLS, filters=[("order_id", "eq", "={{ $json.payment.order_id }}")], **extra)
@@ -214,8 +222,10 @@ def engine():
         dt_get("Baca Rules", [660, 300], "rules", alwaysOutputData=True, executeOnce=True),
         dt_get("Baca Billing", [660, 140], "billing", alwaysOutputData=True, executeOnce=True),
         dt_get("Baca Usage", [660, 460], "usage", filters=[("month", "eq", MONTH)], alwaysOutputData=True, executeOnce=True),
+        dt_get("Baca Kredit", [660, 620], "credits", alwaysOutputData=True, executeOnce=True),
         code_node("Proses Event", [880, 300], "engine_process.js"),
-        switch("Rute Aksi", [1100, 300], "kind", ["log", "contact", "followup", "ai", "usage"]),
+        switch("Rute Aksi", [1100, 300], "kind", ["log", "contact", "followup", "ai", "usage", "credits"]),
+        credits_write("Simpan Kredit", [1360, 1160], "used", src="$json."),
         dt_write("Simpan Usage", [1360, 1000], "usage", "upsert", USAGE_VALUES, types=USAGE_COLS, filters=USAGE_FILTER),
         dt_write("Simpan Log", [1620, 120], "events", "insert", LOG_VALUES),
         dt_write("Simpan Kontak", [1360, 300], "contacts", "upsert",
@@ -243,12 +253,13 @@ def engine():
     c = {}
     chain(c, "Webhook IG Verify", "Baca Settings Verify", "Cek Verify Token", "Balas Verify")
     chain(c, "Webhook IG Event", "Ambil Body Mentah", "Baca Settings", "Baca Akun", "Baca Rules", "Baca Billing",
-          "Baca Usage", "Proses Event", "Rute Aksi")
+          "Baca Usage", "Baca Kredit", "Proses Event", "Rute Aksi")
     connect(c, "Rute Aksi", "Simpan Log", 0)
     connect(c, "Rute Aksi", "Simpan Kontak", 1)
     connect(c, "Rute Aksi", "Jadwalkan Follow Up", 2)
     connect(c, "Rute Aksi", "AI Jawab Komentar", 3)
     connect(c, "Rute Aksi", "Simpan Usage", 4)
+    connect(c, "Rute Aksi", "Simpan Kredit", 5)
     chain(c, "AI Jawab Komentar", "Kirim Balasan AI", "Simpan Log")
     connect(c, "DeepSeek Model", "AI Jawab Komentar", kind="ai_languageModel")
     return workflow("IgarEngine000001", "Wanychat · Engine", n, c)
@@ -294,8 +305,10 @@ def scheduler():
 def admin_api():
     acc = "={{ $json.account_id }}"
     me = "={{ $('Cari Sesi').first().json.ig_user_id || 'none' }}"
+    grp = "={{ $('Baca Akun').first().json.owner_id || $('Baca Akun').first().json.ig_user_id || 'none' }}"
     routes = ["deny", "direct", "account_update", "logout", "rules_save", "rules_delete", "events_list",
-              "followups_list", "logs_clear", "payment_insert", "billing_save", "payments_list"]
+              "followups_list", "logs_clear", "payment_insert", "billing_save", "payments_list", "session_switch",
+              "account_unlink", "analytics"]
     list_body = "={{ { ok: true, %s: $input.all().map(i => i.json).filter(r => r.id) } }}"
     first_resp = "={{ $('Proses Permintaan').first().json.response }}"
     rule_values = {c: "={{ $json." + c + " }}" for c in RULE_COLS}
@@ -307,9 +320,13 @@ def admin_api():
         dt_get("Cari Sesi", [440, 300], "sessions", filters=[("token", "eq", cookie_hash("Webhook API", "wany_session"))],
                alwaysOutputData=True, executeOnce=True),
         dt_get("Baca Akun", [660, 300], "accounts", filters=[("ig_user_id", "eq", me)], alwaysOutputData=True, executeOnce=True),
-        dt_get("Baca Billing Akun", [660, 140], "billing", filters=[("account_id", "eq", me)],
+        dt_get("Baca Akun Grup", [660, -20], "accounts", filters=[("owner_id", "eq", grp), ("ig_user_id", "eq", grp)],
+               match="any", alwaysOutputData=True, executeOnce=True),
+        dt_get("Baca Billing Akun", [660, 140], "billing", filters=[("account_id", "eq", grp)],
                alwaysOutputData=True, executeOnce=True),
-        dt_get("Baca Usage Akun", [660, 460], "usage", filters=[("account_id", "eq", me), ("month", "eq", MONTH)],
+        dt_get("Baca Usage Akun", [660, 460], "usage", filters=[("month", "eq", MONTH)],
+               alwaysOutputData=True, executeOnce=True),
+        dt_get("Baca Kredit", [660, 620], "credits", filters=[("account_id", "eq", grp)],
                alwaysOutputData=True, executeOnce=True),
         dt_get("Baca Rules Akun", [880, 140], "rules", filters=[("account_id", "eq", me)],
                alwaysOutputData=True, executeOnce=True),
@@ -344,12 +361,22 @@ def admin_api():
         respond("Balas Checkout", [1620, 1340], first_resp, executeOnce=True),
         billing_write("Simpan Billing", [1380, 1500]),
         respond("Balas Billing", [1620, 1500], first_resp, executeOnce=True),
-        dt_get("Baca Pembayaran", [1380, 1660], "payments", filters=[("account_id", "eq", acc)],
+        dt_get("Baca Pembayaran", [1380, 1660], "payments", filters=[("account_id", "eq", "={{ $json.group_id }}")],
                order=("createdAt", "DESC"), limit=50, alwaysOutputData=True),
         respond("Balas Pembayaran", [1620, 1660],
                 "={{ { ok: true, payments: $input.all().map(i => i.json).filter(r => r.id).map(r => ({ order_id: r.order_id, "
                 "plan: r.plan, amount: r.amount, status: r.status, payment_type: r.payment_type, kind: r.kind, "
-                "paid_at: r.paid_at, createdAt: r.createdAt })) } }}", executeOnce=True),
+                "paid_at: r.paid_at, credits: r.credits, createdAt: r.createdAt })) } }}", executeOnce=True),
+        dt_write("Pindah Akun", [1380, 1820], "sessions", "update", {"ig_user_id": "={{ $json.target }}"},
+                 filters=[("token", "eq", cookie_hash("Webhook API", "wany_session"))], executeOnce=True),
+        respond("Balas Pindah Akun", [1620, 1820], first_resp, executeOnce=True),
+        dt_write("Lepas Akun", [1380, 1980], "accounts", "update", {"owner_id": ""},
+                 filters=[("ig_user_id", "eq", "={{ $json.target }}")], executeOnce=True),
+        respond("Balas Lepas Akun", [1620, 1980], first_resp, executeOnce=True),
+        dt_get("Baca Events Analitik", [1380, 2140], "events", filters=[("account_id", "eq", acc)],
+               order=("createdAt", "DESC"), limit=20000, alwaysOutputData=True),
+        code_node("Hitung Analitik", [1620, 2140], "analytics.js"),
+        respond("Balas Analitik", [1860, 2140], "={{ $json.response }}", executeOnce=True),
 
         # --- Login dengan Instagram: /webhook/wany-login -> instagram.com -> /webhook/wany-oauth
         webhook("Webhook Login", [0, 1900], "GET", "wany-login", "responseNode"),
@@ -362,6 +389,9 @@ def admin_api():
         dt_get("Baca Settings Callback", [220, 2160], "settings", alwaysOutputData=True, executeOnce=True),
         dt_get("Baca Akun Callback", [440, 2160], "accounts", alwaysOutputData=True, executeOnce=True),
         dt_get("Baca Billing Callback", [660, 2000], "billing", alwaysOutputData=True, executeOnce=True),
+        dt_get("Cari Sesi Callback", [660, 2320], "sessions",
+               filters=[("token", "eq", cookie_hash("Webhook Login Callback", "wany_session"))],
+               alwaysOutputData=True, executeOnce=True),
         code_node("Tukar Kode Login", [660, 2160], "oauth_callback.js"),
         node("Login Berhasil?", "n8n-nodes-base.if", 2.2, [880, 2160], {"conditions": {
             "options": {"caseSensitive": True, "leftValue": "", "typeValidation": "strict", "version": 2},
@@ -382,10 +412,11 @@ def admin_api():
         redirect("Login Gagal", [1120, 2260], "={{ $json.location }}"),
     ]
     c = {}
-    chain(c, "Webhook API", "Baca Settings", "Cari Sesi", "Baca Akun", "Baca Billing Akun", "Baca Usage Akun",
-          "Baca Rules Akun", "Proses Permintaan", "Rute API")
+    chain(c, "Webhook API", "Baca Settings", "Cari Sesi", "Baca Akun", "Baca Akun Grup", "Baca Billing Akun",
+          "Baca Usage Akun", "Baca Kredit", "Baca Rules Akun", "Proses Permintaan", "Rute API")
     targets = ["Tolak", "Balas", "Update Akun", "Hapus Sesi", "Simpan Rule", "Hapus Rule", "Baca Events",
-               "Baca Follow Up", "Hapus Semua Log", "Simpan Checkout", "Simpan Billing", "Baca Pembayaran"]
+               "Baca Follow Up", "Hapus Semua Log", "Simpan Checkout", "Simpan Billing", "Baca Pembayaran",
+               "Pindah Akun", "Lepas Akun", "Baca Events Analitik"]
     for i, t in enumerate(targets):
         connect(c, "Rute API", t, i)
     chain(c, "Update Akun", "Balas Update Akun")
@@ -398,9 +429,12 @@ def admin_api():
     chain(c, "Simpan Checkout", "Balas Checkout")
     chain(c, "Simpan Billing", "Balas Billing")
     chain(c, "Baca Pembayaran", "Balas Pembayaran")
+    chain(c, "Pindah Akun", "Balas Pindah Akun")
+    chain(c, "Lepas Akun", "Balas Lepas Akun")
+    chain(c, "Baca Events Analitik", "Hitung Analitik", "Balas Analitik")
     chain(c, "Webhook Login", "Baca Settings Login", "Buat State", "Susun URL Login", "Ke Instagram")
     chain(c, "Webhook Login Callback", "Baca Settings Callback", "Baca Akun Callback", "Baca Billing Callback",
-          "Tukar Kode Login", "Login Berhasil?")
+          "Cari Sesi Callback", "Tukar Kode Login", "Login Berhasil?")
     connect(c, "Login Berhasil?", "Simpan Akun", 0)
     connect(c, "Login Berhasil?", "Login Gagal", 1)
     chain(c, "Simpan Akun", "Buat Sesi", "Simpan Sesi", "Masuk ke Panel")
@@ -414,11 +448,13 @@ def billing():
         code_node("Ambil Body Mentah", [0, 0], "billing_raw.js"),
         dt_get("Baca Settings", [220, 0], "settings", alwaysOutputData=True, executeOnce=True),
         dt_get("Baca Billing", [440, 0], "billing", alwaysOutputData=True, executeOnce=True),
+        dt_get("Baca Kredit", [550, -160], "credits", alwaysOutputData=True, executeOnce=True),
         dt_get("Baca Pembayaran", [660, 0], "payments",
                filters=[("order_id", "eq", "={{ $('Ambil Body Mentah').first().json.invoice || 'none' }}")],
                alwaysOutputData=True, executeOnce=True),
         code_node("Proses Notifikasi", [880, 0], "billing_notify.js"),
-        switch("Rute Billing", [1100, 0], "kind", ["billing", "payment", "audit"]),
+        switch("Rute Billing", [1100, 0], "kind", ["billing", "payment", "audit", "credits"]),
+        credits_write("Simpan Kredit", [1340, 320], "granted"),
         billing_write("Simpan Billing", [1340, -160]),
         payment_write("Simpan Pembayaran", [1340, 0]),
         dt_write("Catat Audit", [1340, 160], "audit", "insert", AUDIT_VALUES),
@@ -428,8 +464,10 @@ def billing():
         dt_get("Baca Settings Sync", [220, 400], "settings", alwaysOutputData=True, executeOnce=True),
         dt_get("Baca Billing Sync", [440, 400], "billing", alwaysOutputData=True, executeOnce=True),
         dt_get("Baca Pembayaran Sync", [660, 400], "payments", alwaysOutputData=True, executeOnce=True),
+        dt_get("Baca Kredit Sync", [770, 560], "credits", alwaysOutputData=True, executeOnce=True),
         code_node("Sinkron Langganan", [880, 400], "billing_sync.js"),
-        switch("Rute Sync", [1100, 400], "kind", ["billing", "payment", "audit"]),
+        switch("Rute Sync", [1100, 400], "kind", ["billing", "payment", "audit", "credits"]),
+        credits_write("Simpan Kredit Sync", [1340, 720], "granted"),
         billing_write("Simpan Billing Sync", [1340, 240]),
         payment_write("Simpan Pembayaran Sync", [1340, 400]),
         dt_write("Catat Audit Sync", [1340, 560], "audit", "insert", AUDIT_VALUES),
@@ -443,12 +481,13 @@ def billing():
         }),
     ]
     c = {}
-    chain(c, "Webhook DOKU", "Ambil Body Mentah", "Baca Settings", "Baca Billing", "Baca Pembayaran", "Proses Notifikasi", "Rute Billing")
-    for i, t in enumerate(["Simpan Billing", "Simpan Pembayaran", "Catat Audit"]):
+    chain(c, "Webhook DOKU", "Ambil Body Mentah", "Baca Settings", "Baca Billing", "Baca Kredit", "Baca Pembayaran",
+          "Proses Notifikasi", "Rute Billing")
+    for i, t in enumerate(["Simpan Billing", "Simpan Pembayaran", "Catat Audit", "Simpan Kredit"]):
         connect(c, "Rute Billing", t, i)
-    chain(c, "Setiap Hari 04.00", "Baca Settings Sync", "Baca Billing Sync", "Baca Pembayaran Sync", "Sinkron Langganan",
-          "Rute Sync")
-    for i, t in enumerate(["Simpan Billing Sync", "Simpan Pembayaran Sync", "Catat Audit Sync"]):
+    chain(c, "Setiap Hari 04.00", "Baca Settings Sync", "Baca Billing Sync", "Baca Pembayaran Sync", "Baca Kredit Sync",
+          "Sinkron Langganan", "Rute Sync")
+    for i, t in enumerate(["Simpan Billing Sync", "Simpan Pembayaran Sync", "Catat Audit Sync", "Simpan Kredit Sync"]):
         connect(c, "Rute Sync", t, i)
     chain(c, "Webhook Paket", "Baca Settings Paket", "Susun Paket", "Balas Paket")
     return workflow("WanyBilling00001", "Wanychat · Billing", n, c)
@@ -458,13 +497,15 @@ def billing():
 def superadmin():
     resp = "={{ $('Cek Admin').all().map(i => i.json).find(j => j.response).response }}"
     status = "{{ $('Cek Admin').all().map(i => i.json).find(j => j.response).status || 200 }}"
-    routes = ["deny", "direct", "login", "logout", "data", "settings_save", "billing_save", "revoke", "audit", "cleanup"]
+    routes = ["deny", "direct", "login", "logout", "data", "settings_save", "billing_save", "revoke", "audit", "cleanup",
+              "credits_save"]
     n = [
         webhook("Webhook SA", [0, 300], "POST", "wany-sa", "responseNode"),
         dt_get("Baca Settings", [220, 300], "settings", alwaysOutputData=True, executeOnce=True),
         dt_get("Cari Sesi Admin", [440, 300], "admin_sessions",
                filters=[("token_hash", "eq", cookie_hash("Webhook SA", "wany_sa"))], alwaysOutputData=True, executeOnce=True),
         dt_get("Baca Billing", [660, 300], "billing", alwaysOutputData=True, executeOnce=True),
+        dt_get("Baca Kredit", [770, 460], "credits", alwaysOutputData=True, executeOnce=True),
         code_node("Cek Admin", [880, 300], "sa_auth.js"),
         switch("Rute SA", [1100, 300], "route", routes),
         respond("Tolak SA", [1380, -300], "={{ $json.response }}", "401", executeOnce=True),
@@ -497,12 +538,14 @@ def superadmin():
         respond("Balas Cabut Sesi", [1620, 780], resp, executeOnce=True),
         dt_write("Catat Audit SA", [1380, 940], "audit", "insert", AUDIT_VALUES),
         dt_delete("Hapus Sesi Kedaluwarsa", [1380, 1100], "admin_sessions", [("expires_at", "lt", "={{ $json.before }}")]),
+        credits_write("Simpan Kredit SA", [1380, 1260], "granted", executeOnce=True),
+        respond("Balas Kredit SA", [1620, 1260], resp, executeOnce=True),
     ]
     c = {}
-    chain(c, "Webhook SA", "Baca Settings", "Cari Sesi Admin", "Baca Billing", "Cek Admin", "Rute SA")
+    chain(c, "Webhook SA", "Baca Settings", "Cari Sesi Admin", "Baca Billing", "Baca Kredit", "Cek Admin", "Rute SA")
     for i, t in enumerate(["Tolak SA", "Balas SA", "Simpan Sesi Admin", "Hapus Sesi Admin", "Baca Akun SA",
                            "Simpan Setting", "Simpan Billing SA", "Cabut Sesi User", "Catat Audit SA",
-                           "Hapus Sesi Kedaluwarsa"]):
+                           "Hapus Sesi Kedaluwarsa", "Simpan Kredit SA"]):
         connect(c, "Rute SA", t, i)
     chain(c, "Simpan Sesi Admin", "Balas Login")
     chain(c, "Hapus Sesi Admin", "Balas Logout SA")
@@ -511,6 +554,7 @@ def superadmin():
     chain(c, "Simpan Setting", "Balas Setting")
     chain(c, "Simpan Billing SA", "Balas Billing SA")
     chain(c, "Cabut Sesi User", "Balas Cabut Sesi")
+    chain(c, "Simpan Kredit SA", "Balas Kredit SA")
     return workflow("WanySuperAdmin01", "Wanychat · Superadmin", n, c)
 
 

@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { api, LOGIN_URL, type Account, type Billing, type Profile } from '../api'
-import { Field, Spinner, Switch, useToast } from '../components/ui'
+import { api, LINK_URL, LOGIN_URL, switchAccount, type Account, type Billing, type Member, type Profile } from '../api'
+import { Confirm, Field, Spinner, Switch, useToast } from '../components/ui'
 import { InstallCard } from '../components/Install'
 
 type Sub = { subscribed_fields: string[] }
@@ -98,6 +98,8 @@ export default function SettingsPage({ account, billing, reload, logout }: { acc
           </button>
         </section>
 
+        <LinkedAccounts account={account} billing={billing} />
+
         <InstallCard />
       </div>
     </>
@@ -114,5 +116,77 @@ function Status({ ok, title, desc, action }: { ok: boolean | null; title: string
       </div>
       {action}
     </div>
+  )
+}
+
+// Akun Instagram lain dalam satu langganan: tiap akun punya dasbor sendiri, kuota paket dibagi bersama
+function LinkedAccounts({ account, billing }: { account: Account; billing: Billing | null }) {
+  const toast = useToast()
+  const [data, setData] = useState<{ accounts: Member[]; limit: number; is_owner: boolean; plan: string } | null>(null)
+  const [busy, setBusy] = useState('')
+  const [unlink, setUnlink] = useState<Member | null>(null)
+  const load = () => api<{ accounts: Member[]; limit: number; is_owner: boolean; plan: string }>('accounts.list').then(setData).catch(() => {})
+  useEffect(() => { load() }, [account.ig_user_id]) // eslint-disable-line react-hooks/exhaustive-deps
+  if (!data) return <section className="card"><Spinner /></section>
+  const free = Math.max(0, data.limit - data.accounts.length)
+  const canAdd = data.limit > 1 && free > 0
+  return (
+    <section className="card stack">
+      <div>
+        <h2 className="card-title">Akun Instagram di langganan ini</h2>
+        <p className="card-sub" style={{ margin: 0 }}>
+          {data.limit > 1
+            ? <>Paket {data.plan}: {data.limit} akun, kuota DM & AI dipakai bersama. Tiap akun punya automasi dan dasbor sendiri.</>
+            : <>Paket {data.plan} untuk 1 akun. Paket Pro bisa 2 akun, Bisnis 5 akun. <a href="#/billing">Lihat paket</a></>}
+        </p>
+      </div>
+      <div>
+        {data.accounts.map((m) => (
+          <div key={m.ig_user_id} className="member-row">
+            {m.avatar ? <img className="avatar" src={m.avatar} alt="" /> : <span className="avatar" />}
+            <div>
+              <div className="ellipsis" style={{ fontWeight: 700 }}>@{m.username}</div>
+              <div className="small muted">
+                {m.owner ? 'Pemilik langganan' : 'Akun tambahan'}{m.current ? ' · sedang dibuka' : ''}{!m.active ? ' · tidak aktif (melebihi paket)' : ''}
+              </div>
+            </div>
+            {!m.current && (
+              <button className="btn sm" disabled={!!busy} onClick={async () => { setBusy(m.ig_user_id); try { await switchAccount(m.ig_user_id) } catch (e) { toast((e as Error).message, 'error'); setBusy('') } }}>
+                {busy === m.ig_user_id ? <Spinner /> : 'Buka'}
+              </button>
+            )}
+            {!m.owner && (data.is_owner || m.current) && (
+              <button className="btn sm ghost" disabled={!!busy} onClick={() => setUnlink(m)}>{m.current ? 'Keluar grup' : 'Lepas'}</button>
+            )}
+          </div>
+        ))}
+      </div>
+      {canAdd && (
+        <>
+          <a className="btn primary" href={LINK_URL}>＋ Tambah akun Instagram ({free} slot tersisa)</a>
+          <p className="hint" style={{ margin: 0 }}>Kamu akan diarahkan ke login Instagram. Masuk dengan akun yang ingin ditambahkan
+            (kalau Instagram langsung memakai akun ini, pilih "Bukan kamu?" atau keluar dulu di instagram.com).</p>
+        </>
+      )}
+      {!billing?.is_owner && billing?.owner_username && <p className="hint" style={{ margin: 0 }}>Langganan dikelola oleh @{billing.owner_username}.</p>}
+      {unlink && (
+        <Confirm
+          title={unlink.current ? 'Keluar dari langganan grup?' : `Lepas @${unlink.username}?`}
+          body={<p style={{ margin: 0 }}>@{unlink.username} jadi akun terpisah dengan paket Gratis. Automasi dan lognya tetap tersimpan. Bisa ditambahkan lagi kapan saja.</p>}
+          confirmLabel={unlink.current ? 'Keluar grup' : 'Lepas akun'}
+          onCancel={() => setUnlink(null)}
+          onConfirm={async () => {
+            const target = unlink
+            setUnlink(null)
+            try {
+              await api('accounts.unlink', { ig_user_id: target.ig_user_id })
+              toast('@' + target.username + ' dilepas')
+              if (target.current) window.location.reload()
+              else load()
+            } catch (e) { toast((e as Error).message, 'error') }
+          }}
+        />
+      )}
+    </section>
   )
 }

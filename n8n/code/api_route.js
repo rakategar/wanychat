@@ -21,12 +21,19 @@ const sameOrigin = !origin || (base && origin === base);
 
 const plans = loadPlans(settings);
 const month = monthKey();
-const billing = acc ? latestBy($('Baca Billing Akun').all().map(i => i.json), 'account_id')[String(acc.ig_user_id)] || null : null;
-const usageRow = acc ? latestBy($('Baca Usage Akun').all().map(i => i.json).filter(u => u.month === month), 'account_id')[String(acc.ig_user_id)] || {} : {};
-const usage = { dm: Number(usageRow.dm) || 0, ai: Number(usageRow.ai) || 0 };
+// Satu langganan bisa dipakai beberapa akun IG (grup = akun pemilik). Billing, kuota, dan kredit AI milik grup.
+const gid = acc ? groupOf(acc) : '';
+const members = acc ? groupMembers($('Baca Akun Grup').all().map(i => i.json).concat([acc]).filter((a, i, all) => all.findIndex(b => String(b.ig_user_id) === String(a.ig_user_id)) === i), gid) : [];
+const billing = acc ? latestBy($('Baca Billing Akun').all().map(i => i.json), 'account_id')[gid] || null : null;
+const usage = acc ? groupUsage($('Baca Usage Akun').all().map(i => i.json).filter(u => u.month === month), members, gid) : { dm: 0, ai: 0 };
+const credit = acc ? latestBy($('Baca Kredit').all().map(i => i.json), 'account_id')[gid] || {} : {};
+const credits = creditBalance(credit);
 const plan = effectivePlan(billing, plans);
+const topups = loadTopups(settings);
 const myRules = $('Baca Rules Akun').all().map(i => i.json).filter(r => r.id && acc && String(r.account_id) === String(acc.ig_user_id));
-const publicPlan = (x) => ({ id: x.id, name: x.name, price: Number(x.price) || 0, dm: Number(x.dm) || 0, ai: Number(x.ai) || 0, rules: Number(x.rules) || 0, followup: !!x.followup, persona: !!x.persona });
+const publicPlan = (x) => ({ id: x.id, name: x.name, price: Number(x.price) || 0, dm: Number(x.dm) || 0, ai: Number(x.ai) || 0, rules: Number(x.rules) || 0,
+  followup: !!x.followup, persona: !!x.persona, accounts: Number(x.accounts) || 1, analytics: !!x.analytics, watermark: !!x.watermark });
+const owner = members.find(a => String(a.ig_user_id) === gid);
 const fullBilling = (fields) => Object.assign({
   account_id: String(acc.ig_user_id), plan: 'free', status: 'free', period_end: null, subscription_id: '', subscription_name: '',
   cancel_at_period_end: false, suspended: false, source: '', card_hint: '', last_order_id: '', note: '',
@@ -46,16 +53,20 @@ const billingView = () => ({
   card_hint: billing ? billing.card_hint || '' : '',
   source: billing ? billing.source || '' : '',
   usage, month, rules_used: myRules.length,
+  credits, accounts_limit: Math.max(1, Number(plan.accounts) || 1), accounts_used: members.length,
+  group_inactive: !!acc && !activeInGroup(acc, members, plan), is_owner: !!acc && String(acc.ig_user_id) === gid,
+  owner_username: owner ? owner.username || '' : '',
 });
 
 //#include lib_doku.js
+const fmtNum = (n) => Math.round(n).toLocaleString('id-ID');
 
-const reply = (route, response, extra) => [{ json: Object.assign({ route, response, account_id: acc ? String(acc.ig_user_id) : '' }, extra || {}) }];
+const reply = (route, response, extra) => [{ json: Object.assign({ route, response, account_id: acc ? String(acc.ig_user_id) : '', group_id: gid }, extra || {}) }];
 const fail = (error, status) => reply('direct', { ok: false, error }, { status: status || 400 });
 const updateAccount = (fields, response) => reply('account_update', response, { fields: Object.assign({
   ig_user_id: acc.ig_user_id, username: acc.username, name: acc.name, avatar: acc.avatar, access_token: acc.access_token,
   token_expires_at: acc.token_expires_at || null, token_refresh_error: acc.token_refresh_error || '',
-  ai_enabled: acc.ai_enabled !== false, ai_persona: acc.ai_persona || '',
+  ai_enabled: acc.ai_enabled !== false, ai_persona: acc.ai_persona || '', owner_id: acc.owner_id || '',
 }, fields) });
 
 async function ig(method, path, qs) {
@@ -82,6 +93,12 @@ const publicAccount = () => ({
   ai_enabled: acc.ai_enabled !== false,
   ai_persona: acc.ai_persona || '',
   connected_at: acc.connected_at || '',
+  owner_id: acc.owner_id || '',
+});
+const memberView = (a, i) => ({
+  ig_user_id: String(a.ig_user_id), username: a.username || '', name: a.name || '', avatar: a.avatar || '',
+  owner: String(a.ig_user_id) === gid, current: String(a.ig_user_id) === String(acc.ig_user_id),
+  active: i < Math.max(1, Number(plan.accounts) || 1), connected_at: a.connected_at || '',
 });
 
 if (!sameOrigin) return reply('deny', { ok: false, error: 'Permintaan ditolak' });
@@ -94,11 +111,12 @@ switch (action) {
 
   case 'billing.get':
     return reply('direct', {
-      ok: true, billing: billingView(), plans: plans.map(publicPlan), payments_enabled: DOKU_READY,
-      // Total per metode bayar per paket: fee DOKU + PPN-nya sudah ditambahkan supaya diterima bersih = harga paket
+      ok: true, billing: billingView(), plans: plans.map(publicPlan), topups, payments_enabled: DOKU_READY,
+      // Total per metode bayar per paket/top-up: fee DOKU + PPN-nya sudah ditambahkan supaya diterima bersih = harga
       methods: dokuMethods().map(id => ({
         id, label: DOKU_LABELS[id],
-        totals: Object.fromEntries(plans.filter(x => Number(x.price) > 0).map(x => [x.id, dokuCharge(x.price, id).total])),
+        totals: Object.fromEntries(plans.filter(x => Number(x.price) > 0).map(x => [x.id, dokuCharge(x.price, id).total])
+          .concat(topups.map(t => [t.id, dokuCharge(t.price, id).total]))),
       })),
     });
 
@@ -106,7 +124,11 @@ switch (action) {
     return reply('payments_list', null);
 
   case 'billing.checkout': {
-    const target = plans.find(x => x.id === String(p.plan || '') && Number(x.price) > 0);
+    // Paket langganan (p.plan) atau top-up kredit AI (p.topup); dibukukan ke akun pemilik grup
+    const pack = p.topup ? topups.find(x => x.id === String(p.topup)) : null;
+    if (p.topup && !pack) return fail('Paket top-up tidak ditemukan');
+    const target = pack ? { id: pack.id, name: fmtNum(pack.credits) + ' kredit AI', price: pack.price }
+      : plans.find(x => x.id === String(p.plan || '') && Number(x.price) > 0);
     if (!target) return fail('Paket tidak ditemukan');
     if (!DOKU_READY) return fail('Pembayaran belum dibuka. Hubungi admin Wanychat.');
     if (!base) return fail('public_url belum disetel admin');
@@ -116,7 +138,7 @@ switch (action) {
     const charge = dokuCharge(price, method);
     // Maks 30 karakter tanpa simbol (syarat kartu kredit & KKI di DOKU)
     const orderId = ('WNY' + Date.now().toString(36) + dokuCrypto.randomBytes(4).toString('hex')).toUpperCase().slice(0, 30);
-    const items = [{ id: target.id, name: ('Wanychat ' + target.name + ' 1 bulan').slice(0, 50), price, quantity: 1 }];
+    const items = [{ id: target.id, name: ('Wanychat ' + target.name + (pack ? '' : ' 1 bulan')).slice(0, 50), price, quantity: 1 }];
     if (charge.surcharge > 0) items.push({ id: 'fee', name: 'Biaya layanan pembayaran', price: charge.surcharge, quantity: 1 });
     const r = await doku('POST', '/checkout/v1/payment', {
       order: {
@@ -124,15 +146,16 @@ switch (action) {
         callback_url: base + '/#/billing?paid=1', callback_url_result: base + '/#/billing?paid=1', language: 'ID',
       },
       payment: { payment_due_date: 120, payment_method_types: [method] },
-      customer: { id: 'IG' + acc.ig_user_id, name: String(acc.name || acc.username || 'Pelanggan').slice(0, 50) },
+      customer: { id: 'IG' + gid, name: String(acc.name || acc.username || 'Pelanggan').slice(0, 50) },
       additional_info: { override_notification_url: base + DOKU_NOTIFY_PATH },
     });
     const url = r.body && r.body.response && r.body.response.payment && r.body.response.payment.url;
     if (!r.ok || !url) return fail('Gagal membuat pembayaran: ' + (r.error || 'tanpa URL pembayaran'));
     return reply('payment_insert', { ok: true, redirect_url: url }, { payment: {
-      order_id: orderId, account_id: String(acc.ig_user_id), plan: target.id, amount: charge.total, status: 'pending',
-      payment_type: method, kind: 'checkout', transaction_id: String((r.body.response.order && r.body.response.order.session_id) || ''),
-      paid_at: null, fee: 0, note: charge.surcharge ? 'harga ' + price + ' + biaya ' + charge.surcharge : '',
+      order_id: orderId, account_id: gid, plan: target.id, amount: charge.total, status: 'pending',
+      payment_type: method, kind: pack ? 'topup' : 'checkout', credits: pack ? pack.credits : 0,
+      transaction_id: String((r.body.response.order && r.body.response.order.session_id) || ''),
+      paid_at: null, fee: 0, note: (charge.surcharge ? 'harga ' + price + ' + biaya ' + charge.surcharge : '') + (gid !== String(acc.ig_user_id) ? ' via @' + (acc.username || acc.ig_user_id) : ''),
     } });
   }
 
@@ -188,7 +211,7 @@ switch (action) {
     if (rowId > 0 && !myRules.some(x => Number(x.id) === rowId)) return fail('Automasi tidak ditemukan', 404);
     if (rowId < 0 && Number(plan.rules) > 0 && myRules.length >= Number(plan.rules)) return fail('Paket ' + plan.name + ' maksimal ' + plan.rules + ' automasi. Upgrade di menu Langganan.');
     if (r.followup_enabled && !plan.followup) return fail('Follow-up tersedia mulai paket Kreator. Matikan follow-up atau upgrade.');
-    if (r.ai_fallback && !(Number(plan.ai) > 0)) return fail('Balasan AI tersedia mulai paket Kreator. Matikan Balasan AI atau upgrade.');
+    if (r.ai_fallback && !(Number(plan.ai) > 0) && !(credits > 0)) return fail('Balasan AI butuh paket Kreator ke atas atau kredit AI. Beli top-up di menu Langganan.');
     return [{ json: {
       route: 'rules_save',
       account_id: String(acc.ig_user_id),
@@ -214,6 +237,31 @@ switch (action) {
   case 'rules.delete':
     if (!(Number(p.id) > 0)) return fail('id tidak valid');
     return reply('rules_delete', null, { row_id: Number(p.id) });
+
+  case 'accounts.list':
+    return reply('direct', { ok: true, accounts: members.map(memberView), limit: Math.max(1, Number(plan.accounts) || 1), is_owner: String(acc.ig_user_id) === gid, plan: plan.name });
+
+  case 'accounts.switch': {
+    // Pindah dasbor ke akun lain dalam grup yang sama (sesi tetap, ig_user_id sesi diganti)
+    const target = members.find(a => String(a.ig_user_id) === String(p.ig_user_id || ''));
+    if (!target) return fail('Akun tidak ada di grup kamu', 404);
+    return reply('session_switch', { ok: true }, { target: String(target.ig_user_id) });
+  }
+
+  case 'accounts.unlink': {
+    // Pemilik melepas akun anggota, atau anggota keluar dari grup. Akun yang dilepas jadi akun Gratis sendiri.
+    const id = String(p.ig_user_id || '');
+    const target = members.find(a => String(a.ig_user_id) === id);
+    if (!target || id === gid) return fail('Akun pemilik langganan tidak bisa dilepas');
+    if (String(acc.ig_user_id) !== gid && id !== String(acc.ig_user_id)) return fail('Hanya pemilik langganan yang bisa melepas akun lain', 403);
+    return reply('account_unlink', { ok: true, self: id === String(acc.ig_user_id) }, { target: id, back_to: gid });
+  }
+
+  case 'analytics.get': {
+    if (!plan.analytics) return fail('Dasbor analitik tersedia di paket Bisnis. Upgrade di menu Langganan.', 403);
+    const days = [7, 30, 90].includes(Number(p.days)) ? Number(p.days) : 30;
+    return reply('analytics', null, { days });
+  }
 
   case 'events.list':
     return reply('events_list', null, { limit: Math.min(Number(p.limit) || 200, 500) });

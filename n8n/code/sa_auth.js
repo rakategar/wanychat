@@ -160,6 +160,16 @@ const validFees = (v) => {
       && Number(x[0]) >= 0 && Number(x[0]) <= 20 && Number(x[1]) >= 0 && Number(x[1]) <= 100000);
   } catch (e) { return false; }
 };
+const validTopups = (v) => {
+  if (v.trim() === '') return true;
+  try {
+    const t = JSON.parse(v);
+    const ids = new Set();
+    return Array.isArray(t) && t.length >= 1 && t.length <= 6 && t.every(x => x && /^ai\w{1,18}$/.test(x.id) && !ids.has(x.id) && ids.add(x.id)
+      && Number.isInteger(Number(x.credits)) && Number(x.credits) >= 1 && Number(x.credits) <= 1000000
+      && Number(x.price) >= 1000 && Number(x.price) <= 100000000);
+  } catch (e) { return false; }
+};
 const EDITABLE = {
   public_url: { ok: (v) => /^https:\/\/[a-z0-9.-]+(:\d+)?$/i.test(v) },
   graph_version: { ok: (v) => /^v\d{1,2}\.\d$/.test(v) },
@@ -183,6 +193,8 @@ const EDITABLE = {
   cost_other_idr: { ok: NUM(0, 100000000) },
   cost_ai_per_1m_idr: { ok: NUM(0, 10000000) },
   usd_idr: { ok: NUM(1000, 100000) },
+  watermark_text: { ok: (v) => v.length <= 200 },
+  ai_topups: { ok: validTopups },
 };
 
 function validPlans(list) {
@@ -196,12 +208,13 @@ function validPlans(list) {
     const n = (v, max) => Math.round(Number(v));
     const item = {
       id, name: String(x.name || '').trim().slice(0, 30), price: n(x.price), dm: n(x.dm), ai: n(x.ai), rules: n(x.rules),
-      followup: !!x.followup, persona: !!x.persona,
+      followup: !!x.followup, persona: !!x.persona, accounts: n(x.accounts ?? 1), analytics: !!x.analytics, watermark: !!x.watermark,
     };
     if (!item.name) return 'Nama paket ' + id + ' kosong';
     for (const [k, max] of [['price', 100000000], ['dm', 10000000], ['ai', 10000000], ['rules', 1000]]) {
       if (!(item[k] >= 0 && item[k] <= max)) return k + ' paket ' + id + ' tidak valid';
     }
+    if (!(item.accounts >= 1 && item.accounts <= 20)) return 'Jumlah akun paket ' + id + ' harus 1-20';
     if (id !== 'free' && item.price > 0 && item.price < 1000) return 'Harga minimal Rp 1.000';
     clean.push(item);
   }
@@ -270,6 +283,19 @@ switch (action) {
     out.push({ json: { route: 'billing_save', billing: next, response: { ok: true, billing: next } } });
     if (next.suspended && !cur.suspended) out.push({ json: { route: 'revoke', account_id: id } });
     audit('user_update', id, ['plan=' + next.plan, 'end=' + (next.period_end || '-'), 'suspended=' + next.suspended, next.note ? 'note' : ''].join(' '));
+    return out;
+  }
+
+  case 'sa.user.credits': {
+    // Tambah/kurangi kredit AI grup (akun pemilik langganan). Hanya kolom granted yang ditulis.
+    const id = String(p.account_id || '');
+    const delta = Math.round(Number(p.delta));
+    if (!/^\d{5,25}$/.test(id)) return done(400, { ok: false, error: 'account_id tidak valid' });
+    if (!delta || Math.abs(delta) > 1000000) return done(400, { ok: false, error: 'Jumlah kredit tidak valid' });
+    const row = latestBy($('Baca Kredit').all().map(i => i.json), 'account_id')[id] || {};
+    const granted = Math.max(Number(row.used) || 0, (Number(row.granted) || 0) + delta);
+    out.push({ json: { route: 'credits_save', credits: { account_id: id, granted }, response: { ok: true, granted, balance: creditBalance({ granted, used: row.used }) } } });
+    audit('credits_adjust', id, (delta > 0 ? '+' : '') + delta + ' -> granted ' + granted);
     return out;
   }
 

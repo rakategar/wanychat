@@ -44,6 +44,7 @@ cd n8n
 TARGET=cloud python3 build.py && python3 deploy_cloud.py   # changes node parameters/code, then publishes
 ```
 `deploy_cloud.py` replaces the whole draft graph (nodes + connections) and then publishes, so the workflow ID stays the same. To deploy just one: `python3 deploy_cloud.py IgarEngine000001`.
+Backup before deploying: `python3 backup_cloud.py` saves the live workflows to `n8n/backup/<date>/` (gitignored, local only).
 MCP token for n8n cloud: `~/.config/wanychat/n8n-cloud.json` → `{"url": ".../mcp-server/http", "token": "..."}` (chmod 600).
 
 Initial setup, already done: `python3 cloud_setup.py https://wanychat.remot.in` creates the tables and copies settings, rules, and accounts from local.
@@ -69,9 +70,21 @@ DeepSeek credential: create it in the n8n cloud UI (Credentials → DeepSeek), t
 5. Fee table (DOKU list prices, before VAT) lives in `n8n/code/lib_doku.js`; override per method with the `doku_fees` setting (JSON `{"METHOD": [percent, rupiah]}`) if DOKU gives you different rates. `doku_fee_to_customer=false` stops charging fees to customers.
 6. There is no automatic recurring charge (DOKU Checkout has none); customers pay again each month.
 
+## Plans, accounts, AI credits, analytics
+| Plan | Price | DM / month | AI replies / month | IG accounts | Extras |
+|---|---|---|---|---|---|
+| Gratis | Rp 0 | 100 | 0 (top-up only) | 1 | DMs end with the "via Wanychat" watermark |
+| Kreator | Rp 49rb | 1,000 | 50 | 1 | follow-up |
+| Pro | Rp 99rb | 5,000 | 1,000 | 2 | + AI persona |
+| Bisnis | Rp 249rb | 20,000 | 5,000 | 5 | + analytics dashboard |
+
+- **Watermark** (`plan.watermark`): `withWatermark()` in `lib_plans.js` appends `watermark_text` (Teknis → Promosi) to every automatic DM, capped at 1,000 characters. Public comment replies are never watermarked.
+- **Multiple accounts** (`plan.accounts`): extra accounts get `wany_accounts.owner_id` = the subscription owner. "Akun → Tambah akun Instagram" goes through `/webhook/wany-login?link=1` (the state ends in `-link`, and the callback requires a valid session). Billing, quota (pooled across the group), and credits belong to the owner. `accounts.switch` points the current session at another account in the group. When a plan is downgraded, accounts beyond the limit stop (owner first, then by `connected_at`).
+- **AI credit top-up** (`ai_topups` setting, default 100/500/2,000 credits = Rp 10/39/129rb): `billing.checkout {topup}` creates a payment with `kind=topup`, `credits=N`. Once paid, `wany_credits.granted` += N (written only by Billing/superadmin), and the Engine increments `used` once the monthly AI quota is used up. Credits never expire and work on the Gratis plan too. Superadmin can add or remove credits in Pengguna → Kelola.
+- **Analytics** (`plan.analytics`): `analytics.get {days}` → `n8n/code/analytics.js` computes from `wany_events` (up to 20,000 most recent rows): funnel, daily trend, leads per post (button taps are attributed to the post of that user's last private reply), per automation, comment heatmap (WIB), top words, and hot leads (CSV export in the browser). Clearing logs also clears analytics.
+
 ## Costs and pricing
-Pricing on the landing page: Gratis (100 DM), Kreator Rp 49rb (1,000 DM), Pro Rp 99rb (5,000 DM), Bisnis Rp 249rb (3 accounts, 20,000 DM).
-For comparison, ManyChat Pro is about $29–39/month (~Rp 480–640rb), with AI as a separate add-on.
+For comparison, ManyChat Pro is about $29–39/month (~Rp 520–700rb at Rp 18,000/USD), with AI as a separate add-on.
 
 | Cost item | n8n cloud (now) | Self-hosted VPS (target) |
 |---|---|---|

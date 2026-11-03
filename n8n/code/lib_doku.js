@@ -118,8 +118,9 @@ function billingRow(b, accountId) {
 }
 
 // Terapkan hasil cek status DOKU ke satu order yang kita buat sendiri (`known`, baris wany_payments).
-// Hasil: { payment, billing?, audits[] }. Hanya status dari API DOKU + nominal yang kita simpan yang dipercaya.
-function applyDokuStatus(st, known, cur, plans) {
+// Hasil: { payment, billing?, credits?, audits[] }. Hanya status dari API DOKU + nominal yang kita simpan yang dipercaya.
+// `credit` = baris wany_credits grup (untuk top-up kredit AI; hanya kolom granted yang ditulis).
+function applyDokuStatus(st, known, cur, plans, credit) {
   const audits = [];
   const accountId = String(known.account_id);
   const wasPaid = ['settlement', 'capture'].includes(known.status);
@@ -140,6 +141,16 @@ function applyDokuStatus(st, known, cur, plans) {
     pay.status = 'amount_mismatch';
     pay.note = 'nominal ' + amount + ' != ' + expect;
     audits.push(['doku_amount_mismatch', known.order_id, pay.note]);
+    return { payment: pay, audits };
+  }
+  if (known.kind === 'topup') {
+    const n = Math.round(Number(known.credits) || 0);
+    if (status === 'settlement' && !wasPaid && n > 0) {
+      const granted = (Number(credit && credit.granted) || 0) + n;
+      audits.push(['topup_paid', accountId, n + ' kredit AI ' + amount + ' ' + channel + ' ' + known.order_id]);
+      return { payment: pay, credits: { account_id: accountId, granted }, audits };
+    }
+    if (status === 'refund' && known.status !== 'refund') audits.push(['payment_refund', accountId, known.order_id + ' top-up (kurangi kredit manual)']);
     return { payment: pay, audits };
   }
   const plan = plans.find(x => x.id === known.plan);

@@ -30,8 +30,10 @@ if (!r.ok) { audit('doku_status_error', n.invoice, r.status + ' ' + r.error); re
 
 const plans = loadPlans(settings);
 const cur = latestBy($('Baca Billing').all().map(i => i.json), 'account_id')[String(known.account_id)];
-const res = applyDokuStatus(r.body, known, cur, plans);
+const credit = latestBy($('Baca Kredit').all().map(i => i.json), 'account_id')[String(known.account_id)];
+const res = applyDokuStatus(r.body, known, cur, plans, credit);
 out.push({ json: { kind: 'payment', payment: res.payment } });
 if (res.billing) out.push({ json: { kind: 'billing', billing: res.billing } });
+if (res.credits) out.push({ json: { kind: 'credits', credits: res.credits } });
 for (const a of res.audits) audit(...a);
 return out;
