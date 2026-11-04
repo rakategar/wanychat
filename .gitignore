@@ -15,3 +15,5 @@ film/
 
 # salinan workflow n8n cloud (python3 n8n/backup_cloud.py)
 n8n/backup/
+# dokumen legal (NPWP dll) - jangan di-commit
+dokumen/
