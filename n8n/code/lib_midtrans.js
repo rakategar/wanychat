@@ -7,6 +7,8 @@ const MT_SNAP = MT_PROD ? 'https://app.midtrans.com' : 'https://app.sandbox.midt
 const MT_CORE = MT_PROD ? 'https://api.midtrans.com' : 'https://api.sandbox.midtrans.com';
 // Key produksi & sandbox disimpan terpisah supaya pindah mode tidak menghapus key yang lain
 const MT_SERVER_KEY = String((MT_PROD ? settings.midtrans_server_key : settings.midtrans_sb_server_key) || '');
+// Akun Midtrans dengan beberapa access key: signature_key notifikasi memakai "signature secret key" (kalau diisi)
+const MT_SIGNATURE_KEY = String((MT_PROD ? settings.midtrans_signature_key : settings.midtrans_sb_signature_key) || '');
 const MT_NOTIFY_PATH = '/webhook/wany-midtrans';
 const MT_READY = !!MT_SERVER_KEY;
 
@@ -67,12 +69,14 @@ async function mtCheckout({ orderId, total, items, method, customerName, base })
   return { ok: r.ok && !!r.body.redirect_url, url: r.body.redirect_url || '', token: r.body.token || '', error: r.error || 'tanpa URL pembayaran' };
 }
 
-// signature_key notifikasi = SHA512(order_id + status_code + gross_amount + server key)
+// signature_key notifikasi = SHA512(order_id + status_code + gross_amount + signature secret key / server key)
 function mtSignatureOk(n) {
-  if (!n.order_id || !n.signature_key || !MT_SERVER_KEY) return false;
-  const expected = mtCrypto.createHash('sha512').update(String(n.order_id) + String(n.status_code) + String(n.gross_amount) + MT_SERVER_KEY).digest('hex');
+  if (!n.order_id || !n.signature_key) return false;
   const given = String(n.signature_key);
-  return given.length === expected.length && mtCrypto.timingSafeEqual(Buffer.from(given), Buffer.from(expected));
+  return [MT_SIGNATURE_KEY, MT_SERVER_KEY].filter(Boolean).some((key) => {
+    const expected = mtCrypto.createHash('sha512').update(String(n.order_id) + String(n.status_code) + String(n.gross_amount) + key).digest('hex');
+    return given.length === expected.length && mtCrypto.timingSafeEqual(Buffer.from(given), Buffer.from(expected));
+  });
 }
 
 // Status Midtrans -> bentuk umum lib_pay (applyPayment). channel kosong: payment_type tetap id metode yang kita simpan.

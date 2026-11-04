@@ -118,9 +118,9 @@ function overview() {
   };
 }
 
-const SECRET = ['app_secret', 'doku_secret_key', 'midtrans_server_key', 'midtrans_sb_server_key'];
+const SECRET = ['app_secret', 'doku_secret_key', 'midtrans_server_key', 'midtrans_sb_server_key', 'midtrans_signature_key', 'midtrans_sb_signature_key'];
 // Setelan Midtrans versi langganan lama (tidak dipakai lagi)
-const LEGACY = /^midtrans_(payments|fee_pct|fee_flat|signature_key|client_key)$/;
+const LEGACY = /^midtrans_(payments|fee_pct|fee_flat|client_key)$/;
 const HIDDEN = /^sa_/;
 function settingsView() {
   const values = {};

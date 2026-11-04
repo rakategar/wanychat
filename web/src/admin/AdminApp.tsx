@@ -530,7 +530,9 @@ const GROUPS: { title: string; desc: string; fields: Def[] }[] = [
   { title: 'Midtrans', desc: 'Midtrans Snap. Fee Midtrans + PPN ditambahkan ke tagihan pelanggan.', fields: [
     { key: 'midtrans_env', label: 'Mode', kind: 'select', options: ['sandbox', 'production'] },
     { key: 'midtrans_sb_server_key', label: 'Server key sandbox', kind: 'secret', hint: 'SB-Mid-server-… dari dashboard.sandbox.midtrans.com → Settings → Access Keys.' },
+    { key: 'midtrans_sb_signature_key', label: 'Signature secret key sandbox (opsional)', kind: 'secret', hint: 'Kalau akun punya beberapa access key: key yang ditandai "signature secret key". Kosong = pakai server key.' },
     { key: 'midtrans_server_key', label: 'Server key produksi', kind: 'secret', hint: 'Mid-server-… dari dashboard.midtrans.com → Settings → Access Keys.' },
+    { key: 'midtrans_signature_key', label: 'Signature secret key produksi (opsional)', kind: 'secret' },
     { key: 'midtrans_methods', label: 'Metode bayar', hint: 'Dipisah koma, kode enabled_payments Snap. mis. other_qris,gopay,shopeepay,bca_va,echannel,bni_va,bri_va,permata_va,cimb_va,other_va,alfamart,indomaret,credit_card' },
     { key: 'midtrans_fee_to_customer', label: 'Biaya Midtrans dibebankan ke pelanggan', kind: 'bool', hint: 'Total = harga paket + fee Midtrans + PPN fee, jadi yang diterima bersih = harga paket.' },
     { key: 'midtrans_ppn_pct', label: 'PPN atas fee Midtrans (%)', kind: 'number' },
