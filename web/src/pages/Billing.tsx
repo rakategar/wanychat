@@ -30,11 +30,12 @@ export default function BillingPage({ billing: initial, reload }: { billing: Bil
   const [choose, setChoose] = useState<Item | null>(null)
   const [method, setMethod] = useState('')
   const [busy, setBusy] = useState(false)
+  const [gateway, setGateway] = useState('')
   const [waiting, setWaiting] = useState(() => window.location.hash.includes('paid=1'))
 
   const load = useCallback(async () => {
     const [b, p] = await Promise.all([
-      api<{ billing: Billing; plans: Plan[]; topups: Topup[]; payments_enabled: boolean; methods: Method[] }>('billing.get'),
+      api<{ billing: Billing; plans: Plan[]; topups: Topup[]; payments_enabled: boolean; methods: Method[]; gateway?: string }>('billing.get'),
       api<{ payments: Payment[] }>('billing.payments'),
     ])
     setBilling(b.billing)
@@ -42,13 +43,14 @@ export default function BillingPage({ billing: initial, reload }: { billing: Bil
     setTopups(b.topups || [])
     setEnabled(b.payments_enabled && b.methods.length > 0)
     setMethods(b.methods)
+    setGateway(b.gateway || '')
     setPayments(p.payments)
     return { billing: b.billing, payments: p.payments }
   }, [])
 
   useEffect(() => { load().catch((e) => toast(e.message, 'error')) }, [load, toast])
 
-  // Kembali dari halaman DOKU: tunggu notifikasi pembayaran diproses (maks ±1 menit)
+  // Kembali dari halaman pembayaran (DOKU/Midtrans): tunggu notifikasi pembayaran diproses (maks ±1 menit)
   useEffect(() => {
     if (!waiting) return
     let n = 0
@@ -92,7 +94,7 @@ export default function BillingPage({ billing: initial, reload }: { billing: Bil
         </div>
       </div>
 
-      {waiting && <div className="callout yellow" style={{ marginBottom: 20 }}><Spinner /> &nbsp;Menunggu konfirmasi pembayaran dari DOKU… (pembayaran VA/minimarket bisa dibayar nanti; paket aktif otomatis begitu lunas)</div>}
+      {waiting && <div className="callout yellow" style={{ marginBottom: 20 }}><Spinner /> &nbsp;Menunggu konfirmasi pembayaran{gateway ? ' dari ' + gateway : ''}… (pembayaran VA/minimarket bisa dibayar nanti; paket aktif otomatis begitu lunas)</div>}
 
       <div className="grid two">
         <section className={'card stack ' + (paid ? 'tint-yellow' : '')}>
@@ -146,7 +148,7 @@ export default function BillingPage({ billing: initial, reload }: { billing: Bil
         </div>
       )}
       <p className="hint" style={{ marginTop: 12 }}>
-        Pembayaran diproses DOKU (Virtual Account, minimarket, e-wallet). Tiap pembayaran = 1 bulan, tanpa tagihan otomatis.
+        Pembayaran diproses {gateway || 'payment gateway'} (Virtual Account, minimarket, e-wallet). Tiap pembayaran = 1 bulan, tanpa tagihan otomatis.
         Biaya layanan metode bayar ditambahkan ke total. Ganti paket berlaku langsung tanpa prorata.
       </p>
 
@@ -214,7 +216,7 @@ export default function BillingPage({ billing: initial, reload }: { billing: Bil
             </div>
             <p className="small" style={{ marginBottom: 0 }}>Total sudah termasuk biaya layanan pembayaran
               {method && <> (<b>{rupiah((methods.find((m) => m.id === method)?.totals[choose.id] ?? choose.price) - choose.price)}</b>)</>}.
-              Kamu akan diarahkan ke halaman pembayaran aman DOKU.</p>
+              Kamu akan diarahkan ke halaman pembayaran aman {gateway || 'payment gateway'}.</p>
           </>}
           confirmLabel={busy ? 'Membuka…' : method ? 'Bayar ' + rupiah(methods.find((m) => m.id === method)?.totals[choose.id] ?? choose.price) : 'Pilih metode'}
           onConfirm={() => method && !busy && checkout(choose, method)}

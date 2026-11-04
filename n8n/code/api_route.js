@@ -58,7 +58,9 @@ const billingView = () => ({
   owner_username: owner ? owner.username || '' : '',
 });
 
+//#include lib_pay.js
 //#include lib_doku.js
+//#include lib_midtrans.js
 const fmtNum = (n) => Math.round(n).toLocaleString('id-ID');
 
 const reply = (route, response, extra) => [{ json: Object.assign({ route, response, account_id: acc ? String(acc.ig_user_id) : '', group_id: gid }, extra || {}) }];
@@ -111,12 +113,12 @@ switch (action) {
 
   case 'billing.get':
     return reply('direct', {
-      ok: true, billing: billingView(), plans: plans.map(publicPlan), topups, payments_enabled: DOKU_READY,
-      // Total per metode bayar per paket/top-up: fee DOKU + PPN-nya sudah ditambahkan supaya diterima bersih = harga
-      methods: dokuMethods().map(id => ({
-        id, label: DOKU_LABELS[id],
-        totals: Object.fromEntries(plans.filter(x => Number(x.price) > 0).map(x => [x.id, dokuCharge(x.price, id).total])
-          .concat(topups.map(t => [t.id, dokuCharge(t.price, id).total]))),
+      ok: true, billing: billingView(), plans: plans.map(publicPlan), topups, payments_enabled: payReady(), gateway: PAY_NAMES[PAY_GATEWAY],
+      // Total per metode bayar per paket/top-up: fee gateway + PPN-nya sudah ditambahkan supaya diterima bersih = harga
+      methods: payMethods().map(id => ({
+        id, label: payLabel(id),
+        totals: Object.fromEntries(plans.filter(x => Number(x.price) > 0).map(x => [x.id, payCharge(x.price, id).total])
+          .concat(topups.map(t => [t.id, payCharge(t.price, id).total]))),
       })),
     });
 
@@ -130,31 +132,25 @@ switch (action) {
     const target = pack ? { id: pack.id, name: fmtNum(pack.credits) + ' kredit AI', price: pack.price }
       : plans.find(x => x.id === String(p.plan || '') && Number(x.price) > 0);
     if (!target) return fail('Paket tidak ditemukan');
-    if (!DOKU_READY) return fail('Pembayaran belum dibuka. Hubungi admin Wanychat.');
+    if (!payReady()) return fail('Pembayaran belum dibuka. Hubungi admin Wanychat.');
     if (!base) return fail('public_url belum disetel admin');
     const method = String(p.method || '');
-    if (!dokuMethods().includes(method)) return fail('Pilih metode pembayaran');
+    if (!payMethods().includes(method)) return fail('Pilih metode pembayaran');
     const price = Math.round(Number(target.price));
-    const charge = dokuCharge(price, method);
-    // Maks 30 karakter tanpa simbol (syarat kartu kredit & KKI di DOKU)
+    const charge = payCharge(price, method);
+    // Maks 30 karakter tanpa simbol (syarat kartu kredit & KKI di DOKU; aman juga untuk order_id Midtrans)
     const orderId = ('WNY' + Date.now().toString(36) + dokuCrypto.randomBytes(4).toString('hex')).toUpperCase().slice(0, 30);
     const items = [{ id: target.id, name: ('Wanychat ' + target.name + (pack ? '' : ' 1 bulan')).slice(0, 50), price, quantity: 1 }];
     if (charge.surcharge > 0) items.push({ id: 'fee', name: 'Biaya layanan pembayaran', price: charge.surcharge, quantity: 1 });
-    const r = await doku('POST', '/checkout/v1/payment', {
-      order: {
-        amount: charge.total, invoice_number: orderId, currency: 'IDR', line_items: items, auto_redirect: true,
-        callback_url: base + '/#/billing?paid=1', callback_url_result: base + '/#/billing?paid=1', language: 'ID',
-      },
-      payment: { payment_due_date: 120, payment_method_types: [method] },
-      customer: { id: 'IG' + gid, name: String(acc.name || acc.username || 'Pelanggan').slice(0, 50) },
-      additional_info: { override_notification_url: base + DOKU_NOTIFY_PATH },
+    const r = await payCheckout({
+      orderId, total: charge.total, items, method, base,
+      customerId: 'IG' + gid, customerName: String(acc.name || acc.username || 'Pelanggan').slice(0, 50),
     });
-    const url = r.body && r.body.response && r.body.response.payment && r.body.response.payment.url;
-    if (!r.ok || !url) return fail('Gagal membuat pembayaran: ' + (r.error || 'tanpa URL pembayaran'));
-    return reply('payment_insert', { ok: true, redirect_url: url }, { payment: {
+    if (!r.ok) return fail('Gagal membuat pembayaran: ' + r.error);
+    return reply('payment_insert', { ok: true, redirect_url: r.url }, { payment: {
       order_id: orderId, account_id: gid, plan: target.id, amount: charge.total, status: 'pending',
-      payment_type: method, kind: pack ? 'topup' : 'checkout', credits: pack ? pack.credits : 0,
-      transaction_id: String((r.body.response.order && r.body.response.order.session_id) || ''),
+      payment_type: method, kind: pack ? 'topup' : 'checkout', credits: pack ? pack.credits : 0, gateway: PAY_GATEWAY,
+      transaction_id: r.session,
       paid_at: null, fee: 0, note: (charge.surcharge ? 'harga ' + price + ' + biaya ' + charge.surcharge : '') + (gid !== String(acc.ig_user_id) ? ' via @' + (acc.username || acc.ig_user_id) : ''),
     } });
   }

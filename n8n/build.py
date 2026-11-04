@@ -43,7 +43,7 @@ BILLING_COLS = {
 PAYMENT_COLS = {
     "order_id": "string", "account_id": "string", "plan": "string", "amount": "number", "status": "string",
     "payment_type": "string", "kind": "string", "transaction_id": "string", "paid_at": "dateTime", "fee": "number",
-    "note": "string", "credits": "number",
+    "note": "string", "credits": "number", "gateway": "string",
 }
 USAGE_COLS = {"account_id": "string", "month": "string", "dm": "number", "ai": "number", "ai_tokens": "number",
               "comments": "number"}
@@ -366,7 +366,7 @@ def admin_api():
         respond("Balas Pembayaran", [1620, 1660],
                 "={{ { ok: true, payments: $input.all().map(i => i.json).filter(r => r.id).map(r => ({ order_id: r.order_id, "
                 "plan: r.plan, amount: r.amount, status: r.status, payment_type: r.payment_type, kind: r.kind, "
-                "paid_at: r.paid_at, credits: r.credits, createdAt: r.createdAt })) } }}", executeOnce=True),
+                "paid_at: r.paid_at, credits: r.credits, gateway: r.gateway || 'doku', createdAt: r.createdAt })) } }}", executeOnce=True),
         dt_write("Pindah Akun", [1380, 1820], "sessions", "update", {"ig_user_id": "={{ $json.target }}"},
                  filters=[("token", "eq", cookie_hash("Webhook API", "wany_session"))], executeOnce=True),
         respond("Balas Pindah Akun", [1620, 1820], first_resp, executeOnce=True),
@@ -441,10 +441,11 @@ def admin_api():
     return workflow("IgarAdminApi0001", "Wanychat · Admin API", n, c)
 
 
-# ---------------------------------------------------------------- Billing (DOKU) + daftar paket publik
+# ---------------------------------------------------------------- Billing (DOKU / Midtrans) + daftar paket publik
 def billing():
     n = [
         webhook("Webhook DOKU", [-220, 0], "POST", "wany-doku", "onReceived", rawBody=True),
+        webhook("Webhook Midtrans", [-220, 160], "POST", "wany-midtrans", "onReceived", rawBody=True),
         code_node("Ambil Body Mentah", [0, 0], "billing_raw.js"),
         dt_get("Baca Settings", [220, 0], "settings", alwaysOutputData=True, executeOnce=True),
         dt_get("Baca Billing", [440, 0], "billing", alwaysOutputData=True, executeOnce=True),
@@ -481,6 +482,7 @@ def billing():
         }),
     ]
     c = {}
+    connect(c, "Webhook Midtrans", "Ambil Body Mentah")
     chain(c, "Webhook DOKU", "Ambil Body Mentah", "Baca Settings", "Baca Billing", "Baca Kredit", "Baca Pembayaran",
           "Proses Notifikasi", "Rute Billing")
     for i, t in enumerate(["Simpan Billing", "Simpan Pembayaran", "Catat Audit", "Simpan Kredit"]):

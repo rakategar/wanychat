@@ -9,7 +9,9 @@ const action = String(body.action || '');
 const p = body.payload && typeof body.payload === 'object' ? body.payload : {};
 const settings = {};
 for (const it of $('Baca Settings').all()) if (it.json.key) settings[it.json.key] = it.json.value ?? '';
+//#include lib_pay.js
 //#include lib_doku.js
+//#include lib_midtrans.js
 const base = String(settings.public_url || '').replace(/\/$/, '');
 const ip = String(headers['x-vercel-forwarded-for'] || headers['cf-connecting-ip'] || headers['x-real-ip'] || '').split(',')[0].trim();
 const edgeIp = String(headers['cf-connecting-ip'] || '');
@@ -152,11 +154,11 @@ const saveSettings = (pairs, response, act, detail) => {
 // Setelan yang boleh diubah dari dasbor, beserta validasinya. secret = tidak pernah dikirim balik ke browser.
 const BOOL = (v) => v === 'true' || v === 'false';
 const NUM = (min, max) => (v) => v !== '' && isFinite(Number(v)) && Number(v) >= min && Number(v) <= max;
-const validFees = (v) => {
+const validFees = (labels) => (v) => {
   if (v.trim() === '') return true;
   try {
     const o = JSON.parse(v);
-    return o && typeof o === 'object' && !Array.isArray(o) && Object.entries(o).every(([k, x]) => DOKU_LABELS[k] && Array.isArray(x) && x.length === 2
+    return o && typeof o === 'object' && !Array.isArray(o) && Object.entries(o).every(([k, x]) => labels[k] && Array.isArray(x) && x.length === 2
       && Number(x[0]) >= 0 && Number(x[0]) <= 20 && Number(x[1]) >= 0 && Number(x[1]) <= 100000);
   } catch (e) { return false; }
 };
@@ -188,7 +190,16 @@ const EDITABLE = {
   doku_fee_to_customer: { ok: BOOL },
   doku_ppn_pct: { ok: NUM(0, 20) },
   doku_round: { ok: NUM(1, 1000) },
-  doku_fees: { ok: validFees },
+  doku_fees: { ok: validFees(DOKU_LABELS) },
+  payment_provider: { ok: (v) => v === 'doku' || v === 'midtrans' },
+  midtrans_env: { ok: (v) => v === 'sandbox' || v === 'production' },
+  midtrans_server_key: { secret: true, ok: (v) => /^Mid-server-[\w-]{10,80}$/.test(v) },
+  midtrans_sb_server_key: { secret: true, ok: (v) => /^SB-Mid-server-[\w-]{10,80}$/.test(v) },
+  midtrans_methods: { ok: (v) => v.trim() !== '' && v.split(',').every(x => MT_LABELS[x.trim()]) },
+  midtrans_fee_to_customer: { ok: BOOL },
+  midtrans_ppn_pct: { ok: NUM(0, 20) },
+  midtrans_round: { ok: NUM(1, 1000) },
+  midtrans_fees: { ok: validFees(MT_LABELS) },
   cost_server_idr: { ok: NUM(0, 100000000) },
   cost_other_idr: { ok: NUM(0, 100000000) },
   cost_ai_per_1m_idr: { ok: NUM(0, 10000000) },

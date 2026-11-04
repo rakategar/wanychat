@@ -54,7 +54,7 @@ export const FAQ = [
   },
   {
     q: 'Bisa berhenti kapan saja?',
-    a: <>Bisa. Tidak ada tagihan otomatis: tiap pembayaran (Virtual Account, minimarket, atau e-wallet lewat DOKU) berlaku 1 bulan. Kalau tidak diperpanjang, paket kembali ke Gratis setelah masa aktif habis.</>,
+    a: <>Bisa. Tidak ada tagihan otomatis: tiap pembayaran (Virtual Account, minimarket, atau e-wallet lewat payment gateway resmi) berlaku 1 bulan. Kalau tidak diperpanjang, paket kembali ke Gratis setelah masa aktif habis.</>,
   },
   {
     q: 'Bisa pakai beberapa akun Instagram?',

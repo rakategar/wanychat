@@ -172,7 +172,9 @@ function OverviewTab({ guard, go }: { guard: Guard; go: (t: Tab) => void }) {
   const checks: [boolean, string, string][] = [
     [h.engine_enabled, 'Engine auto-reply', h.engine_enabled ? 'Berjalan' : 'Mode perawatan: semua balasan dihentikan'],
     [h.meta_app, 'Aplikasi Meta', h.meta_app ? 'App ID & App Secret terisi' : 'Isi di tab Teknis'],
-    [!!h.doku, 'DOKU', h.doku ? `Terhubung (${h.doku})` : 'Client ID / secret key belum diisi: pembayaran nonaktif'],
+    h.gateway === 'midtrans'
+      ? [!!h.midtrans, 'Pembayaran: Midtrans', h.midtrans ? `Aktif (${h.midtrans})` : 'Server key untuk mode ini belum diisi: pembayaran nonaktif']
+      : [!!h.doku, 'Pembayaran: DOKU', h.doku ? `Aktif (${h.doku})` : 'Client ID / secret key belum diisi: pembayaran nonaktif'],
     [errors.length === 0, 'Error 24 jam', errors.length ? errors.map(([k, v]) => `${k}: ${v}`).join(', ') : 'Tidak ada'],
     [h.token_errors.length === 0, 'Token Instagram', h.token_errors.length ? 'Gagal diperpanjang: ' + h.token_errors.map((x) => '@' + x).join(', ') : h.token_expiring.length ? 'Segera habis: ' + h.token_expiring.join(', ') : 'Semua sehat'],
     [true, 'Event terakhir', h.last_event_at ? timeAgo(h.last_event_at) : 'Belum ada'],
@@ -191,7 +193,7 @@ function OverviewTab({ guard, go }: { guard: Guard; go: (t: Tab) => void }) {
 
       <div className="grid stats" style={{ marginBottom: 24 }}>
         <Tile n={fmt(o.totals.users)} label="Pengguna" sub={`+${o.totals.new_this_month} bulan ini`} tint="blue" />
-        <Tile n={fmt(o.totals.paid_users)} label="Berbayar" sub={`${rupiah(o.totals.mrr)} / bulan (DOKU)`} tint="yellow" />
+        <Tile n={fmt(o.totals.paid_users)} label="Berbayar" sub={`${rupiah(o.totals.mrr)} / bulan`} tint="yellow" />
         <Tile n={rupiah(o.totals.mrr)} label="MRR" sub="dari langganan otomatis" tint="green" />
         <Tile n={rupiah(cur.revenue)} label="Pendapatan" sub={`${cur.payments} pembayaran`} tint="pink" />
         <Tile n={rupiah(cur.profit)} label="Laba bersih" sub="setelah biaya" tint={cur.profit < 0 ? 'red' : 'purple'} />
@@ -213,7 +215,7 @@ function OverviewTab({ guard, go }: { guard: Guard; go: (t: Tab) => void }) {
           </div>
           <div className="table-wrap" style={{ marginTop: 16 }}>
             <table className="table">
-              <thead><tr><th>Bulan</th><th>Pendapatan</th><th>Biaya DOKU</th><th>Biaya AI</th><th>Server & lain</th><th>Laba</th></tr></thead>
+              <thead><tr><th>Bulan</th><th>Pendapatan</th><th>Biaya gateway</th><th>Biaya AI</th><th>Server & lain</th><th>Laba</th></tr></thead>
               <tbody>
                 {[...o.months].reverse().map((m) => (
                   <tr key={m.month}>
@@ -471,7 +473,7 @@ function PlansTab({ guard }: { guard: Guard }) {
           <button className="btn dark" disabled={busy} onClick={save}>{busy ? <Spinner /> : 'Simpan paket'}</button>
         </div>
       </div>
-      <div className="callout yellow small" style={{ marginBottom: 16 }}>Harga baru berlaku untuk pembayaran berikutnya. Biaya DOKU ditambahkan otomatis ke tagihan pelanggan per metode bayar.</div>
+      <div className="callout yellow small" style={{ marginBottom: 16 }}>Harga baru berlaku untuk pembayaran berikutnya. Biaya payment gateway ditambahkan otomatis ke tagihan pelanggan per metode bayar.</div>
       <div className="grid lp-plans">
         {plans.map((p, i) => (
           <section key={i} className="card stack">
@@ -505,7 +507,7 @@ const GROUPS: { title: string; desc: string; fields: Def[] }[] = [
     { key: 'engine_enabled', label: 'Engine auto-reply aktif', kind: 'bool', hint: 'Matikan untuk mode perawatan: semua balasan & follow-up berhenti.' },
     { key: 'signup_open', label: 'Pendaftaran akun baru dibuka', kind: 'bool' },
     { key: 'announcement', label: 'Pengumuman di panel pengguna', hint: 'Kosongkan untuk menyembunyikan. Maks 300 karakter.' },
-    { key: 'public_url', label: 'URL publik panel', hint: 'mis. https://wanychat.remot.in (tanpa / di akhir). Dipakai untuk login Instagram & DOKU.' },
+    { key: 'public_url', label: 'URL publik panel', hint: 'mis. https://wanychat.remot.in (tanpa / di akhir). Dipakai untuk login Instagram & payment gateway.' },
   ] },
   { title: 'Instagram / Meta', desc: 'Aplikasi Meta untuk login & webhook.', fields: [
     { key: 'ig_app_id', label: 'Instagram App ID' },
@@ -517,10 +519,23 @@ const GROUPS: { title: string; desc: string; fields: Def[] }[] = [
     { key: 'gemini_enabled', label: 'Balasan AI aktif (global)', kind: 'bool' },
     { key: 'gemini_persona', label: 'Persona bawaan', kind: 'area', hint: 'Dipakai paket tanpa persona sendiri.' },
     { key: 'cost_ai_per_1m_idr', label: 'Biaya AI per 1 juta token (Rp)', kind: 'number', hint: 'Untuk estimasi biaya; lihat tarif DeepSeek.' },
-    { key: 'ai_topups', label: 'Paket top-up kredit AI (JSON)', kind: 'area', hint: 'Kosongkan = bawaan. Format [{"id":"ai100","credits":100,"price":10000}, …]; id diawali "ai". Fee DOKU ditambahkan ke pelanggan.' },
+    { key: 'ai_topups', label: 'Paket top-up kredit AI (JSON)', kind: 'area', hint: 'Kosongkan = bawaan. Format [{"id":"ai100","credits":100,"price":10000}, …]; id diawali "ai". Fee payment gateway ditambahkan ke pelanggan.' },
   ] },
   { title: 'Promosi', desc: 'Paket dengan opsi "Tanda via Wanychat" (bawaan: Gratis).', fields: [
     { key: 'watermark_text', label: 'Teks tanda di akhir DM', hint: 'Kosongkan = "⚡ Dikirim otomatis via Wanychat · wanychat.remot.in". Maks 200 karakter.' },
+  ] },
+  { title: 'Payment gateway', desc: 'Gateway untuk checkout baru. Order lama tetap dicek ke gateway asalnya, jadi aman berpindah kapan saja.', fields: [
+    { key: 'payment_provider', label: 'Gateway aktif', kind: 'select', options: ['doku', 'midtrans'] },
+  ] },
+  { title: 'Midtrans', desc: 'Midtrans Snap. Fee Midtrans + PPN ditambahkan ke tagihan pelanggan.', fields: [
+    { key: 'midtrans_env', label: 'Mode', kind: 'select', options: ['sandbox', 'production'] },
+    { key: 'midtrans_sb_server_key', label: 'Server key sandbox', kind: 'secret', hint: 'SB-Mid-server-… dari dashboard.sandbox.midtrans.com → Settings → Access Keys.' },
+    { key: 'midtrans_server_key', label: 'Server key produksi', kind: 'secret', hint: 'Mid-server-… dari dashboard.midtrans.com → Settings → Access Keys.' },
+    { key: 'midtrans_methods', label: 'Metode bayar', hint: 'Dipisah koma, kode enabled_payments Snap. mis. other_qris,gopay,shopeepay,bca_va,echannel,bni_va,bri_va,permata_va,cimb_va,other_va,alfamart,indomaret,credit_card' },
+    { key: 'midtrans_fee_to_customer', label: 'Biaya Midtrans dibebankan ke pelanggan', kind: 'bool', hint: 'Total = harga paket + fee Midtrans + PPN fee, jadi yang diterima bersih = harga paket.' },
+    { key: 'midtrans_ppn_pct', label: 'PPN atas fee Midtrans (%)', kind: 'number' },
+    { key: 'midtrans_round', label: 'Pembulatan total ke atas (Rp)', kind: 'number' },
+    { key: 'midtrans_fees', label: 'Tarif khusus (opsional, JSON)', kind: 'area', hint: 'Kosongkan = tarif standar Midtrans. Format {"other_qris":[0.7,0],"bca_va":[0,4000]} = [persen, rupiah] sebelum PPN.' },
   ] },
   { title: 'DOKU', desc: 'Pembayaran paket (DOKU Checkout). Fee DOKU + PPN ditambahkan ke tagihan pelanggan.', fields: [
     { key: 'doku_env', label: 'Mode', kind: 'select', options: ['production', 'sandbox'] },
@@ -598,6 +613,7 @@ function SettingsTab({ guard }: { guard: Guard }) {
               <Copy label="Callback URL webhook Meta" value={data.settings.webhooks.meta} />
               <Copy label="OAuth redirect URI" value={data.settings.webhooks.oauth_redirect} />
             </>}
+            {g.title === 'Midtrans' && <Copy label="Payment Notification URL (dasbor Midtrans → Settings → Payment; juga dikirim otomatis per transaksi)" value={data.settings.webhooks.midtrans} />}
             {g.title === 'DOKU' && <Copy label="Notification URL (dasbor DOKU → Checkout & tiap metode bayar)" value={data.settings.webhooks.doku} />}
           </section>
         ))}
@@ -704,7 +720,7 @@ function SecurityTab({ guard }: { guard: Guard }) {
   )
 }
 
-const AUDIT_COLOR: Record<string, string> = { login_failed: 'red', login_locked: 'red', doku_bad_signature: 'red', doku_amount_mismatch: 'red', doku_status_error: 'red', payment_paid: 'green', login_ok: 'blue' }
+const AUDIT_COLOR: Record<string, string> = { login_failed: 'red', login_locked: 'red', doku_bad_signature: 'red', doku_amount_mismatch: 'red', doku_status_error: 'red', midtrans_bad_signature: 'red', midtrans_amount_mismatch: 'red', midtrans_status_error: 'red', payment_paid: 'green', login_ok: 'blue' }
 function AuditTable({ rows }: { rows: AuditRow[] }) {
   if (!rows.length) return <p className="muted" style={{ margin: 0 }}>Belum ada catatan.</p>
   return (

@@ -42,7 +42,7 @@ COLUMNS = {
                 'note': 'string'},
     'payments': {'order_id': 'string', 'account_id': 'string', 'plan': 'string', 'amount': 'number', 'status': 'string',
                  'payment_type': 'string', 'kind': 'string', 'transaction_id': 'string', 'paid_at': 'date',
-                 'fee': 'number', 'note': 'string', 'credits': 'number'},
+                 'fee': 'number', 'note': 'string', 'credits': 'number', 'gateway': 'string'},
     'usage': {'account_id': 'string', 'month': 'string', 'dm': 'number', 'ai': 'number', 'ai_tokens': 'number',
               'comments': 'number'},
     'admin_sessions': {'token_hash': 'string', 'expires_at': 'date', 'ip': 'string', 'ua': 'string'},

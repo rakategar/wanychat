@@ -1,4 +1,4 @@
-// ---- lib_doku.js (disisipkan build.py lewat //#include; butuh `settings` & `helpers`) ----
+// ---- lib_doku.js (disisipkan build.py lewat //#include; butuh `settings` & `helpers`, dipakai lewat lib_pay.js) ----
 // DOKU Checkout (non-SNAP): request ditandatangani HMAC-SHA256 dengan secret key, status diambil dari /orders/v1/status.
 const dokuCrypto = require('crypto');
 const DOKU_PROD = settings.doku_env !== 'sandbox';
@@ -37,24 +37,10 @@ function dokuFeeRate(method) {
 }
 const dokuVat = () => 1 + (settings.doku_ppn_pct === undefined || settings.doku_ppn_pct === '' ? 11 : Number(settings.doku_ppn_pct) || 0) / 100;
 
-// Perkiraan potongan DOKU (fee + PPN) atas nominal yang dibayar pelanggan
-function dokuFeeOf(amount, method) {
-  const [pct, flat] = dokuFeeRate(String(method || ''));
-  return Math.ceil((Number(amount || 0) * pct / 100 + flat) * dokuVat());
-}
-
-// Total yang ditagih ke pelanggan supaya yang diterima bersih = harga paket (fee + PPN-nya ditanggung pelanggan)
-function dokuCharge(price, method) {
-  price = Math.round(Number(price) || 0);
-  if (settings.doku_fee_to_customer === 'false') return { total: price, surcharge: 0, fee: dokuFeeOf(price, method) };
-  const [pct, flat] = dokuFeeRate(method);
-  const vat = dokuVat();
-  const step = Math.max(1, Number(settings.doku_round) || 100);
-  let total = Math.ceil((price + flat * vat) / (1 - pct / 100 * vat));
-  total = Math.ceil(total / step) * step;
-  while (total - dokuFeeOf(total, method) < price) total += step;
-  return { total, surcharge: total - price, fee: dokuFeeOf(total, method) };
-}
+// Perkiraan potongan DOKU (fee + PPN) atas nominal yang dibayar pelanggan; total tagihan dengan fee ditanggung pelanggan
+const dokuFeeOf = (amount, method) => feeWith(amount, dokuFeeRate(String(method || '')), dokuVat());
+const dokuCharge = (price, method) =>
+  chargeWith(price, dokuFeeRate(method), dokuVat(), Number(settings.doku_round) || 100, settings.doku_fee_to_customer !== 'false');
 
 function dokuSignature(clientId, requestId, timestamp, target, body) {
   let s = 'Client-Id:' + clientId + '\nRequest-Id:' + requestId + '\nRequest-Timestamp:' + timestamp + '\nRequest-Target:' + target;
@@ -97,79 +83,13 @@ function dokuPayStatus(st) {
   return 'pending'; // PENDING / FAILED (Checkout: pelanggan masih bisa coba metode lain) / belum pilih metode
 }
 
-// Tambah 1 bulan kalender (31 Jan -> 28/29 Feb)
-function addMonth(ms) {
-  const d = new Date(ms);
-  const day = d.getUTCDate();
-  d.setUTCDate(1);
-  d.setUTCMonth(d.getUTCMonth() + 1);
-  const last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
-  d.setUTCDate(Math.min(day, last));
-  return d.getTime();
-}
-
-function billingRow(b, accountId) {
+// Status DOKU -> bentuk umum lib_pay (applyPayment)
+function dokuNormalize(st) {
   return {
-    account_id: String(accountId), plan: (b && b.plan) || 'free', status: (b && b.status) || 'free', period_end: (b && b.period_end) || null,
-    subscription_id: (b && b.subscription_id) || '', subscription_name: (b && b.subscription_name) || '',
-    cancel_at_period_end: !!(b && isTrue(b.cancel_at_period_end)), suspended: !!(b && isTrue(b.suspended)),
-    source: (b && b.source) || '', card_hint: (b && b.card_hint) || '', last_order_id: (b && b.last_order_id) || '', note: (b && b.note) || '',
+    status: dokuPayStatus(st), amount: Math.round(Number(st.order && st.order.amount) || 0),
+    channel: String((st.channel && st.channel.id) || (st.service && st.service.id) || ''),
+    txid: String((st.transaction && st.transaction.original_request_id) || ''),
+    paidAt: st.transaction && st.transaction.date ? new Date(st.transaction.date).toISOString() : '',
   };
-}
-
-// Terapkan hasil cek status DOKU ke satu order yang kita buat sendiri (`known`, baris wany_payments).
-// Hasil: { payment, billing?, credits?, audits[] }. Hanya status dari API DOKU + nominal yang kita simpan yang dipercaya.
-// `credit` = baris wany_credits grup (untuk top-up kredit AI; hanya kolom granted yang ditulis).
-function applyDokuStatus(st, known, cur, plans, credit) {
-  const audits = [];
-  const accountId = String(known.account_id);
-  const wasPaid = ['settlement', 'capture'].includes(known.status);
-  let status = dokuPayStatus(st);
-  if (wasPaid && status !== 'refund') status = known.status; // lunas tidak pernah mundur ke pending/expire
-  const amount = Math.round(Number(st.order && st.order.amount) || 0);
-  const expect = Math.round(Number(known.amount) || 0);
-  const channel = String((st.channel && st.channel.id) || (st.service && st.service.id) || known.payment_type || '');
-  const pay =Object.assign({}, known, {
-    status, payment_type: channel, transaction_id: String((st.transaction && st.transaction.original_request_id) || known.transaction_id || ''),
-  });
-  delete pay.id; delete pay.createdAt; delete pay.updatedAt;
-  if (status === 'settlement') {
-    pay.paid_at = known.paid_at || new Date((st.transaction && st.transaction.date) || Date.now()).toISOString();
-    pay.fee = dokuFeeOf(amount, known.payment_type || channel);
-  }
-  if (status === 'settlement' && amount !== expect) {
-    pay.status = 'amount_mismatch';
-    pay.note = 'nominal ' + amount + ' != ' + expect;
-    audits.push(['doku_amount_mismatch', known.order_id, pay.note]);
-    return { payment: pay, audits };
-  }
-  if (known.kind === 'topup') {
-    const n = Math.round(Number(known.credits) || 0);
-    if (status === 'settlement' && !wasPaid && n > 0) {
-      const granted = (Number(credit && credit.granted) || 0) + n;
-      audits.push(['topup_paid', accountId, n + ' kredit AI ' + amount + ' ' + channel + ' ' + known.order_id]);
-      return { payment: pay, credits: { account_id: accountId, granted }, audits };
-    }
-    if (status === 'refund' && known.status !== 'refund') audits.push(['payment_refund', accountId, known.order_id + ' top-up (kurangi kredit manual)']);
-    return { payment: pay, audits };
-  }
-  const plan = plans.find(x => x.id === known.plan);
-  if (status === 'settlement' && !wasPaid && plan) {
-    const b = billingRow(cur, accountId);
-    const now = Date.now();
-    const curEnd = cur && cur.period_end ? new Date(cur.period_end).getTime() : 0;
-    // Perpanjangan paket sama: lanjut dari akhir periode. Ganti paket: mulai hari ini.
-    const from = (cur && cur.plan === plan.id && curEnd > now) ? curEnd : now;
-    Object.assign(b, {
-      plan: plan.id, status: 'active', period_end: new Date(addMonth(from)).toISOString(), source: 'doku', last_order_id: known.order_id,
-      subscription_id: '', subscription_name: '', cancel_at_period_end: false, card_hint: '',
-    });
-    audits.push(['payment_paid', accountId, plan.id + ' ' + amount + ' ' + channel + ' ' + known.order_id]);
-    return { payment: pay, billing: b, audits };
-  }
-  if (status === 'refund' && known.status !== 'refund') {
-    audits.push(['payment_refund', accountId, known.order_id + ' (cek manual di dasbor superadmin)']);
-  }
-  return { payment: pay, audits };
 }
 // ---- akhir lib_doku.js ----

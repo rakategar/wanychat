@@ -80,7 +80,7 @@ function overview() {
     };
   });
   const paidUsers = users.filter(x => x.plan !== 'free' && !x.owner_id);
-  const mrr = users.filter(x => x.plan !== 'free' && !x.owner_id && x.source === 'doku').reduce((s, x) => s + num((plans.find(p => p.id === x.plan) || {}).price), 0);
+  const mrr = users.filter(x => x.plan !== 'free' && !x.owner_id && ['doku', 'midtrans'].includes(x.source)).reduce((s, x) => s + num((plans.find(p => p.id === x.plan) || {}).price), 0);
   const thisMonth = usage.filter(u => u.month === month);
   return {
     month, usd_idr: usdIdr,
@@ -104,6 +104,9 @@ function overview() {
       engine_enabled: settings.engine_enabled !== 'false', signup_open: settings.signup_open !== 'false',
       ai_enabled: settings.gemini_enabled !== 'false',
       doku: settings.doku_client_id && settings.doku_secret_key ? (settings.doku_env === 'sandbox' ? 'sandbox' : 'production') : '',
+      // Key Midtrans produksi & sandbox disimpan terpisah; yang dipakai mengikuti midtrans_env
+      midtrans: settings.midtrans_env === 'production' ? (settings.midtrans_server_key ? 'production' : '') : (settings.midtrans_sb_server_key ? 'sandbox' : ''),
+      gateway: settings.payment_provider === 'midtrans' ? 'midtrans' : 'doku',
       meta_app: !!(settings.ig_app_id && settings.app_secret),
       errors_24h: errors24,
       token_errors: users.filter(x => x.token_refresh_error).map(x => x.username),
@@ -115,8 +118,9 @@ function overview() {
   };
 }
 
-const SECRET = ['app_secret', 'doku_secret_key'];
-const LEGACY = /^midtrans_/;
+const SECRET = ['app_secret', 'doku_secret_key', 'midtrans_server_key', 'midtrans_sb_server_key'];
+// Setelan Midtrans versi langganan lama (tidak dipakai lagi)
+const LEGACY = /^midtrans_(payments|fee_pct|fee_flat|signature_key|client_key)$/;
 const HIDDEN = /^sa_/;
 function settingsView() {
   const values = {};
@@ -130,6 +134,7 @@ function settingsView() {
       meta: 'https://kinasih.app.n8n.cloud/webhook/wany-ig',
       oauth_redirect: (settings.public_url || '') + '/webhook/wany-oauth',
       doku: (settings.public_url || '') + '/webhook/wany-doku',
+      midtrans: (settings.public_url || '') + '/webhook/wany-midtrans',
     },
     totp: !!settings.sa_totp_secret,
   };

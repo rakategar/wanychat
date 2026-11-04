@@ -33,7 +33,7 @@ export interface Overview {
   months: MonthRow[]
   usage: { dm: number; ai: number; ai_tokens: number; comments: number; top_ai: { username: string; ai: number; ai_tokens: number; limit: number }[] }
   health: {
-    engine_enabled: boolean; signup_open: boolean; ai_enabled: boolean; doku: string; meta_app: boolean
+    engine_enabled: boolean; signup_open: boolean; ai_enabled: boolean; doku: string; midtrans: string; gateway: 'doku' | 'midtrans'; meta_app: boolean
     errors_24h: Record<string, number>; token_errors: string[]; token_expiring: string[]; last_event_at: string; over_quota: string[]
   }
   audit: AuditRow[]
@@ -92,6 +92,6 @@ export interface PaymentRow {
 export interface SettingsView {
   values: Record<string, string | { set: boolean; hint?: string }>
   plans: Plan[]
-  webhooks: { meta: string; oauth_redirect: string; doku: string }
+  webhooks: { meta: string; oauth_redirect: string; doku: string; midtrans: string }
   totp: boolean
 }
