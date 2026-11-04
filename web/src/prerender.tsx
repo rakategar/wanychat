@@ -18,13 +18,16 @@ export function render() {
       '@id': SITE + '/#org',
       name: 'Wanychat',
       url: SITE + '/',
-      logo: SITE + '/icons/icon-512.png',
+      logo: { '@type': 'ImageObject', url: SITE + '/icons/icon-512.png', width: 512, height: 512 },
+      image: SITE + '/icons/icon-512.png',
     },
     {
       '@context': 'https://schema.org',
       '@type': 'WebSite',
       '@id': SITE + '/#website',
+      // Nama situs di hasil Google (menggantikan label domain "remot.in")
       name: 'Wanychat',
+      alternateName: ['Wanychat Indonesia', 'Wanychat Auto DM Instagram'],
       url: SITE + '/',
       inLanguage: 'id-ID',
       publisher: { '@id': SITE + '/#org' },
