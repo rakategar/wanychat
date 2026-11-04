@@ -24,8 +24,8 @@ if (typeof window !== 'undefined') {
 }
 
 const standalone = () =>
-  window.matchMedia?.('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true
-const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) && !/crios|fxios/i.test(navigator.userAgent)
+  typeof window !== 'undefined' && (window.matchMedia?.('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true)
+const isIOS = () => typeof navigator !== 'undefined' && /iphone|ipad|ipod/i.test(navigator.userAgent) && !/crios|fxios/i.test(navigator.userAgent)
 
 // canInstall: Android/desktop Chrome punya prompt; ios: tampilkan petunjuk "Bagikan → Tambah ke Layar Utama"
 export function useInstall() {

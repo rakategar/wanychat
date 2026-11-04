@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /webhook/
+Disallow: /api
+Disallow: /sa-api
+
+Sitemap: https://wanychat.remot.in/sitemap.xml

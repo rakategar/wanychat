@@ -14,7 +14,7 @@ const LOOK: Record<string, { tint: string; pitch: string; tag?: string }> = {
   bisnis: { tint: 'tint-pink', pitch: 'Untuk brand dengan volume DM tinggi.' },
 }
 
-const FEATURES = [
+export const FEATURES = [
   { icon: '💬', tint: 'tint-blue', title: 'Komentar jadi DM', desc: 'Orang komentar "info", "mau", atau "harga", langsung dapat DM. Walau belum pernah chat kamu.' },
   { icon: '👆', tint: 'tint-yellow', title: 'Tombol di DM', desc: 'DM pertama berisi tombol. Sekali ditekan, kamu bisa kirim link, katalog, dan pesan lanjutan.' },
   { icon: '✨', tint: 'tint-green', title: 'AI yang ngerti produkmu', desc: 'Komentar yang tidak cocok keyword? AI menjawab sesuai info produk yang kamu tulis.' },
@@ -33,7 +33,7 @@ const compare = (pro: Plan): [string, string, string][] => [
   ['Mata uang', 'Rupiah', 'Dolar AS (USD)'],
 ]
 
-const FAQ = [
+export const FAQ = [
   {
     q: 'Akun Instagram pribadi bisa?',
     a: <>Instagram hanya mengizinkan balas otomatis untuk akun <b>Profesional</b> (Kreator atau Bisnis). Mengubahnya gratis dan 1 menit:
@@ -99,8 +99,8 @@ export default function Landing({ error, signedIn }: { error?: string; signedIn:
   return (
     <div className="landing">
       <header className="lp-nav">
-        <a href="#/" className="brand-link"><Brand /></a>
-        <nav className="lp-links">
+        <a href="/" className="brand-link" aria-label="Wanychat, beranda"><Brand /></a>
+        <nav className="lp-links" aria-label="Navigasi halaman">
           <a href="#fitur">Fitur</a>
           <a href="#harga">Harga</a>
           <a href="#faq">FAQ</a>
@@ -110,121 +110,123 @@ export default function Landing({ error, signedIn }: { error?: string; signedIn:
           : <a className="btn sm dark" href={LOGIN_URL}>Masuk</a>}
       </header>
 
-      <section className="lp-hero">
-        <div className="stack" style={{ gap: 20 }}>
-          <span className="badge yellow" style={{ alignSelf: 'flex-start' }}>Auto-DM Instagram · buatan Indonesia</span>
-          <h1>Komentar masuk, <mark>DM terkirim</mark>, kamu tinggal closing.</h1>
-          <p className="lead">
-            Wanychat membalas komentar dan DM Instagram kamu secara otomatis, 24 jam. Cukup login dengan Instagram,
-            tulis keyword, selesai. Fitur seperti ManyChat, harga mulai Rp 0.
-          </p>
-          {error && <div className="callout pink" role="alert">{error}</div>}
-          <div className="row hero-cta">
-            <IgButton label="Mulai gratis dengan Instagram" />
-            <a className="btn" href="#harga">Lihat harga</a>
+      <main>
+        <section className="lp-hero">
+          <div className="stack" style={{ gap: 20 }}>
+            <span className="badge yellow" style={{ alignSelf: 'flex-start' }}>Auto-DM Instagram · buatan Indonesia</span>
+            <h1>Komentar masuk, <mark>DM terkirim</mark>, kamu tinggal closing.</h1>
+            <p className="lead">
+              Wanychat membalas komentar dan DM Instagram kamu secara otomatis, 24 jam. Cukup login dengan Instagram,
+              tulis keyword, selesai. Fitur seperti ManyChat, harga mulai Rp 0.
+            </p>
+            {error && <div className="callout pink" role="alert">{error}</div>}
+            <div className="row hero-cta">
+              <IgButton label="Mulai gratis dengan Instagram" />
+              <a className="btn" href="#harga">Lihat harga</a>
+            </div>
+            <p className="hint">Untuk akun Instagram Kreator atau Bisnis. Tanpa kartu kredit. <InstallButton className="linklike" /></p>
           </div>
-          <p className="hint">Untuk akun Instagram Kreator atau Bisnis. Tanpa kartu kredit. <InstallButton className="linklike" /></p>
-        </div>
 
-        <div className="phone lp-phone" aria-label="Contoh percakapan otomatis">
-          <div className="phone-top">
-            <span className="avatar" style={{ background: 'var(--yellow)' }} />
-            <div><b>tokokamu</b><div className="small muted">Instagram</div></div>
+          <div className="phone lp-phone" aria-label="Contoh percakapan otomatis">
+            <div className="phone-top">
+              <span className="avatar" style={{ background: 'var(--yellow)' }} />
+              <div><b>tokokamu</b><div className="small muted">Instagram</div></div>
+            </div>
+            <div className="phone-body">
+              <div className="bubble comment"><b>@rina.belanja</b> mau kak, harganya berapa?</div>
+              <div className="sys">↳ dibalas: "Udah aku kirim ke DM kak! ✨"</div>
+              <div className="bubble me">Halo Rina! Makasih udah komen 😊 Tekan tombol di bawah ya, nanti aku kirim katalognya.</div>
+              <div className="quick">Kirim katalognya 👉</div>
+              <div className="bubble them">Kirim katalognya 👉</div>
+              <div className="bubble me">Ini katalog + harga lengkapnya kak: tokokamu.id/katalog 🛍️</div>
+              <div className="sys">⏰ follow-up terjadwal 2 jam lagi</div>
+            </div>
           </div>
-          <div className="phone-body">
-            <div className="bubble comment"><b>@rina.belanja</b> mau kak, harganya berapa?</div>
-            <div className="sys">↳ dibalas: "Udah aku kirim ke DM kak! ✨"</div>
-            <div className="bubble me">Halo Rina! Makasih udah komen 😊 Tekan tombol di bawah ya, nanti aku kirim katalognya.</div>
-            <div className="quick">Kirim katalognya 👉</div>
-            <div className="bubble them">Kirim katalognya 👉</div>
-            <div className="bubble me">Ini katalog + harga lengkapnya kak: tokokamu.id/katalog 🛍️</div>
-            <div className="sys">⏰ follow-up terjadwal 2 jam lagi</div>
-          </div>
-        </div>
-      </section>
+        </section>
 
-      <section className="lp-strip">
-        {[['1', 'Login dengan Instagram'], ['2', 'Tulis keyword & pesan'], ['3', 'Biarkan Wanychat bekerja']].map(([n, t]) => (
-          <div key={n} className="row" style={{ flexWrap: 'nowrap' }}>
-            <span className="step-num">{n}</span><b>{t}</b>
-          </div>
-        ))}
-      </section>
-
-      <section id="fitur" className="lp-section">
-        <h2>Semua yang kamu butuhkan untuk jualan lewat komentar</h2>
-        <div className="grid lp-features">
-          {FEATURES.map((f) => (
-            <article key={f.title} className="card">
-              <div className={'lp-icon card ' + f.tint} aria-hidden>{f.icon}</div>
-              <h3>{f.title}</h3>
-              <p className="muted">{f.desc}</p>
-            </article>
+        <section className="lp-strip">
+          {[['1', 'Login dengan Instagram'], ['2', 'Tulis keyword & pesan'], ['3', 'Biarkan Wanychat bekerja']].map(([n, t]) => (
+            <div key={n} className="row" style={{ flexWrap: 'nowrap' }}>
+              <span className="step-num">{n}</span><b>{t}</b>
+            </div>
           ))}
-        </div>
-      </section>
+        </section>
 
-      <section id="harga" className="lp-section">
-        <h2>Harga jujur, dalam Rupiah</h2>
-        <p className="lead" style={{ marginTop: -8 }}>Mulai gratis. Naik paket kalau DM-nya sudah ramai.</p>
-        <div className="grid lp-plans">
-          {plans.map((p) => {
-            const look = LOOK[p.id] || { tint: '', pitch: '' }
-            return (
-              <article key={p.id} className={'card plan ' + look.tint + (look.tag ? ' featured' : '')}>
-                {look.tag && <span className="badge dark plan-tag">{look.tag}</span>}
-                <h3>{p.name}</h3>
-                <div className="plan-price">{rupiahShort(p.price)}<span>{p.price ? '/bulan' : ''}</span></div>
-                {look.pitch && <p className="small">{look.pitch}</p>}
-                <ul className="plan-list">
-                  {planFeatures(p).map((f) => <li key={f}>{f}</li>)}
-                </ul>
-                <a className={'btn ' + (look.tag ? 'dark' : '')} href={cta(p)} style={{ marginTop: 'auto' }}>
-                  {p.price ? 'Pilih ' + p.name : 'Mulai gratis'}
-                </a>
+        <section id="fitur" className="lp-section">
+          <h2>Semua yang kamu butuhkan untuk jualan lewat komentar</h2>
+          <div className="grid lp-features">
+            {FEATURES.map((f) => (
+              <article key={f.title} className="card">
+                <div className={'lp-icon card ' + f.tint} aria-hidden>{f.icon}</div>
+                <h3>{f.title}</h3>
+                <p className="muted">{f.desc}</p>
               </article>
-            )
-          })}
-        </div>
-        <p className="hint" style={{ marginTop: 16 }}>
-          Harga per langganan per bulan, sudah termasuk biaya server dan AI. Tanpa tagihan otomatis: bayar lagi kalau mau lanjut.
-          {cheapest && <> Butuh balasan AI lebih? Top-up mulai {rupiahShort(cheapest.price)} untuk {fmt(cheapest.credits)} balasan, tidak hangus.</>}
-        </p>
-
-        <div className="card lp-compare">
-          <h3 style={{ marginTop: 0 }}>Wanychat vs ManyChat</h3>
-          <div className="table-wrap">
-            <table>
-              <thead><tr><th></th><th>Wanychat</th><th>ManyChat</th></tr></thead>
-              <tbody>
-                {compare(pro).map(([k, a, b]) => (
-                  <tr key={k}><td>{k}</td><td><b>{a}</b></td><td className="muted">{b}</td></tr>
-                ))}
-              </tbody>
-            </table>
+            ))}
           </div>
-          <p className="hint" style={{ marginBottom: 0 }}>Harga ManyChat dari halaman harga publik mereka (Oktober 2026), kurs ± Rp 18.000/USD.</p>
-        </div>
-      </section>
+        </section>
 
-      <section id="faq" className="lp-section">
-        <h2>Pertanyaan yang sering muncul</h2>
-        <div className="stack">
-          {FAQ.map((f) => (
-            <details key={f.q} className="card faq">
-              <summary>{f.q}</summary>
-              <p>{f.a}</p>
-            </details>
-          ))}
-        </div>
-      </section>
+        <section id="harga" className="lp-section">
+          <h2>Harga jujur, dalam Rupiah</h2>
+          <p className="lead" style={{ marginTop: -8 }}>Mulai gratis. Naik paket kalau DM-nya sudah ramai.</p>
+          <div className="grid lp-plans">
+            {plans.map((p) => {
+              const look = LOOK[p.id] || { tint: '', pitch: '' }
+              return (
+                <article key={p.id} className={'card plan ' + look.tint + (look.tag ? ' featured' : '')}>
+                  {look.tag && <span className="badge dark plan-tag">{look.tag}</span>}
+                  <h3>{p.name}</h3>
+                  <div className="plan-price">{rupiahShort(p.price)}<span>{p.price ? '/bulan' : ''}</span></div>
+                  {look.pitch && <p className="small">{look.pitch}</p>}
+                  <ul className="plan-list">
+                    {planFeatures(p).map((f) => <li key={f}>{f}</li>)}
+                  </ul>
+                  <a className={'btn ' + (look.tag ? 'dark' : '')} href={cta(p)} style={{ marginTop: 'auto' }}>
+                    {p.price ? 'Pilih ' + p.name : 'Mulai gratis'}
+                  </a>
+                </article>
+              )
+            })}
+          </div>
+          <p className="hint" style={{ marginTop: 16 }}>
+            Harga per langganan per bulan, sudah termasuk biaya server dan AI. Tanpa tagihan otomatis: bayar lagi kalau mau lanjut.
+            {cheapest && <> Butuh balasan AI lebih? Top-up mulai {rupiahShort(cheapest.price)} untuk {fmt(cheapest.credits)} balasan, tidak hangus.</>}
+          </p>
 
-      <section className="lp-section">
-        <div className="card tint-yellow lp-cta">
-          <h2 style={{ margin: 0 }}>Komentar berikutnya bisa jadi pembeli.</h2>
-          <IgButton label="Mulai gratis dengan Instagram" />
-        </div>
-      </section>
+          <div className="card lp-compare">
+            <h3 style={{ marginTop: 0 }}>Wanychat vs ManyChat</h3>
+            <div className="table-wrap">
+              <table>
+                <thead><tr><th></th><th>Wanychat</th><th>ManyChat</th></tr></thead>
+                <tbody>
+                  {compare(pro).map(([k, a, b]) => (
+                    <tr key={k}><td>{k}</td><td><b>{a}</b></td><td className="muted">{b}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="hint" style={{ marginBottom: 0 }}>Harga ManyChat dari halaman harga publik mereka (Oktober 2026), kurs ± Rp 18.000/USD.</p>
+          </div>
+        </section>
+
+        <section id="faq" className="lp-section">
+          <h2>Pertanyaan yang sering muncul</h2>
+          <div className="stack">
+            {FAQ.map((f) => (
+              <details key={f.q} className="card faq">
+                <summary>{f.q}</summary>
+                <p>{f.a}</p>
+              </details>
+            ))}
+          </div>
+        </section>
+
+        <section className="lp-section">
+          <div className="card tint-yellow lp-cta">
+            <h2 style={{ margin: 0 }}>Komentar berikutnya bisa jadi pembeli.</h2>
+            <IgButton label="Mulai gratis dengan Instagram" />
+          </div>
+        </section>
+      </main>
 
       <footer className="lp-foot">
         <Brand />
