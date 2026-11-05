@@ -84,6 +84,9 @@ export default function BillingPage({ billing: initial, reload }: { billing: Bil
   if (!billing) return <Spinner />
   const plan = billing.plan
   const paid = plan.id !== 'free'
+  // Pembayaran yang belum selesai (link bayar masih berlaku ±2 jam sejak checkout)
+  const open = payments?.find((x) => x.pay_url)
+  const itemName = (x: Payment) => (x.kind === 'topup' ? `${fmt(x.credits || 0)} kredit AI` : plans?.find((p) => p.id === x.plan)?.name || x.plan)
 
   return (
     <>
@@ -95,6 +98,13 @@ export default function BillingPage({ billing: initial, reload }: { billing: Bil
       </div>
 
       {waiting && <div className="callout yellow" style={{ marginBottom: 20 }}><Spinner /> &nbsp;Menunggu konfirmasi pembayaran{gateway ? ' dari ' + gateway : ''}… (pembayaran VA/minimarket bisa dibayar nanti; paket aktif otomatis begitu lunas)</div>}
+
+      {open && !waiting && (
+        <div className="callout yellow row between" style={{ marginBottom: 20, gap: 12, flexWrap: 'wrap' }}>
+          <span>Ada pembayaran yang belum selesai: <b>{itemName(open)}</b> {rupiah(open.amount)}.</span>
+          <a className="btn sm" href={open.pay_url}>Lanjutkan pembayaran</a>
+        </div>
+      )}
 
       <div className="grid two">
         <section className={'card stack ' + (paid ? 'tint-yellow' : '')}>
@@ -179,17 +189,19 @@ export default function BillingPage({ billing: initial, reload }: { billing: Bil
         {!payments ? <Spinner /> : payments.length === 0 ? <p className="muted" style={{ margin: 0 }}>Belum ada pembayaran.</p> : (
           <div className="table-wrap">
             <table className="table">
-              <thead><tr><th>Tanggal</th><th>Paket</th><th>Jumlah</th><th>Status</th><th>Order</th></tr></thead>
+              <thead><tr><th>Tanggal</th><th>Paket</th><th>Jumlah</th><th>Status</th><th>Order</th><th></th></tr></thead>
               <tbody>
                 {payments.map((x) => {
-                  const st = STATUS[x.status] || { label: x.status, color: '' }
+                  // Link bayar sudah lewat batas waktu tapi status belum disinkron gateway
+                  const st = x.status === 'pending' && !x.pay_url ? STATUS.expire : STATUS[x.status] || { label: x.status, color: '' }
                   return (
                     <tr key={x.order_id}>
                       <td>{date(x.paid_at || x.createdAt)}</td>
-                      <td>{x.kind === 'topup' ? `${fmt(x.credits || 0)} kredit AI` : plans?.find((p) => p.id === x.plan)?.name || x.plan}</td>
+                      <td>{itemName(x)}</td>
                       <td>{rupiah(x.amount)}</td>
                       <td><span className={'badge ' + st.color}>{st.label}</span></td>
                       <td className="mono">{x.order_id}</td>
+                      <td>{x.pay_url && <a className="btn sm" href={x.pay_url}>Bayar</a>}</td>
                     </tr>
                   )
                 })}

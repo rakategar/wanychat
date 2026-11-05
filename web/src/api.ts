@@ -149,6 +149,7 @@ export interface Payment {
   credits?: number
   paid_at: string | null
   createdAt: string
+  pay_url?: string
 }
 
 // Login lewat Instagram: n8n memasang cookie sesi HttpOnly, browser mengirimnya otomatis ke /api

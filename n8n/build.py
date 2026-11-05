@@ -43,7 +43,7 @@ BILLING_COLS = {
 PAYMENT_COLS = {
     "order_id": "string", "account_id": "string", "plan": "string", "amount": "number", "status": "string",
     "payment_type": "string", "kind": "string", "transaction_id": "string", "paid_at": "dateTime", "fee": "number",
-    "note": "string", "credits": "number", "gateway": "string",
+    "note": "string", "credits": "number", "gateway": "string", "pay_url": "string",
 }
 USAGE_COLS = {"account_id": "string", "month": "string", "dm": "number", "ai": "number", "ai_tokens": "number",
               "comments": "number"}
@@ -366,7 +366,8 @@ def admin_api():
         respond("Balas Pembayaran", [1620, 1660],
                 "={{ { ok: true, payments: $input.all().map(i => i.json).filter(r => r.id).map(r => ({ order_id: r.order_id, "
                 "plan: r.plan, amount: r.amount, status: r.status, payment_type: r.payment_type, kind: r.kind, "
-                "paid_at: r.paid_at, credits: r.credits, gateway: r.gateway || 'doku', createdAt: r.createdAt })) } }}", executeOnce=True),
+                "paid_at: r.paid_at, credits: r.credits, gateway: r.gateway || 'doku', createdAt: r.createdAt, "
+                "pay_url: r.status === 'pending' && /^https:\\/\\//.test(r.pay_url || '') && Date.now() - new Date(r.createdAt).getTime() < 7200000 ? r.pay_url : '' })) } }}", executeOnce=True),
         dt_write("Pindah Akun", [1380, 1820], "sessions", "update", {"ig_user_id": "={{ $json.target }}"},
                  filters=[("token", "eq", cookie_hash("Webhook API", "wany_session"))], executeOnce=True),
         respond("Balas Pindah Akun", [1620, 1820], first_resp, executeOnce=True),

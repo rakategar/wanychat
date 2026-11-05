@@ -150,7 +150,7 @@ switch (action) {
     return reply('payment_insert', { ok: true, redirect_url: r.url }, { payment: {
       order_id: orderId, account_id: gid, plan: target.id, amount: charge.total, status: 'pending',
       payment_type: method, kind: pack ? 'topup' : 'checkout', credits: pack ? pack.credits : 0, gateway: PAY_GATEWAY,
-      transaction_id: r.session,
+      transaction_id: r.session, pay_url: r.url, // disimpan agar pembayaran pending bisa dilanjutkan dari riwayat
       paid_at: null, fee: 0, note: (charge.surcharge ? 'harga ' + price + ' + biaya ' + charge.surcharge : '') + (gid !== String(acc.ig_user_id) ? ' via @' + (acc.username || acc.ig_user_id) : ''),
     } });
   }
