@@ -62,7 +62,8 @@ def graph_ops(wf, skip=None):
                         op['connectionType'] = kind
                     ops.append(op)
     ops.append({'type': 'setWorkflowSettings', 'settings': {
-        'timezone': wf['settings'].get('timezone', 'Asia/Jakarta'), 'executionOrder': 'v1'}})
+        'timezone': wf['settings'].get('timezone', 'Asia/Jakarta'), 'executionOrder': 'v1',
+        **{k: v for k, v in wf['settings'].items() if k.startswith('save')}}})
     return ops  # urutan: semua addNode dulu, baru settings & koneksi
 
 

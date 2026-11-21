@@ -50,6 +50,9 @@ COLUMNS = {
     'audit': {'actor': 'string', 'action': 'string', 'target': 'string', 'detail': 'string', 'ip': 'string'},
     # kredit balasan AI per grup langganan: granted ditulis Billing/superadmin, used ditulis Engine
     'credits': {'account_id': 'string', 'granted': 'number', 'used': 'number'},
+    # antrean event webhook Instagram: diputar ulang Scheduler jika eksekusi Engine terputus
+    'inbox': {'key': 'string', 'raw': 'string', 'signature': 'string', 'status': 'string', 'tries': 'number',
+              'error': 'string'},
 }
 # Kunci settings yang masih dipakai kode; sisanya warisan versi Telegram
 KEEP_SETTINGS = ['graph_version', 'gemini_enabled', 'gemini_persona', 'app_secret', 'ig_app_id']

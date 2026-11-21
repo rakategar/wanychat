@@ -48,6 +48,8 @@ PAYMENT_COLS = {
 USAGE_COLS = {"account_id": "string", "month": "string", "dm": "number", "ai": "number", "ai_tokens": "number",
               "comments": "number"}
 CREDIT_COLS = {"account_id": "string", "granted": "number", "used": "number"}
+INBOX_COLS = {"key": "string", "raw": "string", "signature": "string", "status": "string", "tries": "number",
+              "error": "string"}
 AUDIT_COLS = {"actor": "string", "action": "string", "target": "string", "detail": "string", "ip": "string"}
 MONTH = "={{ $now.setZone('Asia/Jakarta').toFormat('yyyy-MM') }}"
 
@@ -178,9 +180,10 @@ def chain(conns, *names):
         connect(conns, a, b)
 
 
-def workflow(wid, name, nodes, conns):
+def workflow(wid, name, nodes, conns, **settings):
     return {"id": wid, "name": name, "nodes": nodes, "connections": conns, "active": False,
-            "settings": {"executionOrder": "v1", "timezone": "Asia/Jakarta", "availableInMCP": True}, "pinData": {}}
+            "settings": dict({"executionOrder": "v1", "timezone": "Asia/Jakarta", "availableInMCP": True}, **settings),
+            "pinData": {}}
 
 
 LOG_VALUES = {c: "={{ $json." + c + " }}" for c in EVENT_COLS}
@@ -218,13 +221,19 @@ def engine():
         webhook("Webhook IG Event", [-220, 300], "POST", "wany-ig", "onReceived", rawBody=True),
         code_node("Ambil Body Mentah", [0, 300], "engine_raw.js"),
         dt_get("Baca Settings", [220, 300], "settings", alwaysOutputData=True, executeOnce=True),
+        code_node("Cek Tanda Tangan", [220, 480], "engine_inbox.js"),
+        dt_write("Catat Inbox", [440, 480], "inbox", "upsert", {c: "={{ $json." + c + " }}" for c in ["key", "raw", "signature", "status"]},
+                 filters=[("key", "eq", "={{ $json.key }}")]),
         dt_get("Baca Akun", [440, 300], "accounts", alwaysOutputData=True, executeOnce=True),
         dt_get("Baca Rules", [660, 300], "rules", alwaysOutputData=True, executeOnce=True),
         dt_get("Baca Billing", [660, 140], "billing", alwaysOutputData=True, executeOnce=True),
         dt_get("Baca Usage", [660, 460], "usage", filters=[("month", "eq", MONTH)], alwaysOutputData=True, executeOnce=True),
         dt_get("Baca Kredit", [660, 620], "credits", alwaysOutputData=True, executeOnce=True),
         code_node("Proses Event", [880, 300], "engine_process.js"),
-        switch("Rute Aksi", [1100, 300], "kind", ["log", "contact", "followup", "ai", "usage", "credits"]),
+        switch("Rute Aksi", [1100, 300], "kind", ["log", "contact", "followup", "ai", "usage", "credits", "inbox"]),
+        # Paling bawah di kanvas -> dijalankan terakhir (executionOrder v1), setelah balasan AI terkirim
+        dt_write("Tandai Inbox", [1360, 1320], "inbox", "update", {"status": "={{ $json.status }}"},
+                 filters=[("key", "eq", "={{ $json.key }}")], executeOnce=True),
         credits_write("Simpan Kredit", [1360, 1160], "used", src="$json."),
         dt_write("Simpan Usage", [1360, 1000], "usage", "upsert", USAGE_VALUES, types=USAGE_COLS, filters=USAGE_FILTER),
         dt_write("Simpan Log", [1620, 120], "events", "insert", LOG_VALUES),
@@ -252,7 +261,7 @@ def engine():
     ]
     c = {}
     chain(c, "Webhook IG Verify", "Baca Settings Verify", "Cek Verify Token", "Balas Verify")
-    chain(c, "Webhook IG Event", "Ambil Body Mentah", "Baca Settings", "Baca Akun", "Baca Rules", "Baca Billing",
+    chain(c, "Webhook IG Event", "Ambil Body Mentah", "Baca Settings", "Cek Tanda Tangan", "Catat Inbox", "Baca Akun", "Baca Rules", "Baca Billing",
           "Baca Usage", "Baca Kredit", "Proses Event", "Rute Aksi")
     connect(c, "Rute Aksi", "Simpan Log", 0)
     connect(c, "Rute Aksi", "Simpan Kontak", 1)
@@ -260,6 +269,7 @@ def engine():
     connect(c, "Rute Aksi", "AI Jawab Komentar", 3)
     connect(c, "Rute Aksi", "Simpan Usage", 4)
     connect(c, "Rute Aksi", "Simpan Kredit", 5)
+    connect(c, "Rute Aksi", "Tandai Inbox", 6)
     chain(c, "AI Jawab Komentar", "Kirim Balasan AI", "Simpan Log")
     connect(c, "DeepSeek Model", "AI Jawab Komentar", kind="ai_languageModel")
     return workflow("IgarEngine000001", "Wanychat · Engine", n, c)
@@ -283,6 +293,17 @@ def scheduler():
                  {"status": "={{ $json.status }}", "sent_at": "={{ $json.sent_at }}", "error": "={{ $json.error }}"},
                  types={"sent_at": "dateTime"}, filters=[("id", "eq", "={{ $json.id }}")]),
         dt_write("Simpan Log", [1560, 100], "events", "insert", LOG_VALUES),
+        node("Setiap 2 Menit", "n8n-nodes-base.scheduleTrigger", 1.2, [0, 560],
+             {"rule": {"interval": [{"field": "minutes", "minutesInterval": 2}]}}),
+        dt_get("Baca Settings Inbox", [220, 560], "settings", alwaysOutputData=True, executeOnce=True),
+        dt_get("Baca Inbox Tertunda", [440, 560], "inbox", filters=[("status", "eq", "new")], executeOnce=True),
+        code_node("Putar Ulang Event", [660, 560], "sched_inbox.js"),
+        switch("Rute Inbox", [880, 560], "kind", ["update", "log"]),
+        dt_write("Update Inbox", [1100, 480], "inbox", "update",
+                 {c: "={{ $json." + c + " }}" for c in ["status", "tries", "error"]}, types=INBOX_COLS,
+                 filters=[("key", "eq", "={{ $json.key }}")]),
+        dt_write("Simpan Log Inbox", [1100, 640], "events", "insert", LOG_VALUES),
+        dt_delete("Bersihkan Inbox", [880, 300], "inbox", [("status", "neq", "new")], executeOnce=True),
         node("Setiap Hari 03.00", "n8n-nodes-base.scheduleTrigger", 1.2, [0, 300],
              {"rule": {"interval": [{"field": "days", "triggerAtHour": 3}]}}),
         dt_get("Baca Akun Token", [220, 300], "accounts"),
@@ -298,7 +319,12 @@ def scheduler():
     connect(c, "Rute Hasil", "Simpan Log", 1)
     connect(c, "Rute Hasil", "Simpan Usage", 2)
     chain(c, "Setiap Hari 03.00", "Baca Akun Token", "Perpanjang Token", "Simpan Token")
-    return workflow("IgarSchedule0001", "Wanychat · Scheduler", n, c)
+    connect(c, "Setiap Hari 03.00", "Bersihkan Inbox")
+    chain(c, "Setiap 2 Menit", "Baca Settings Inbox", "Baca Inbox Tertunda", "Putar Ulang Event", "Rute Inbox")
+    connect(c, "Rute Inbox", "Update Inbox", 0)
+    connect(c, "Rute Inbox", "Simpan Log Inbox", 1)
+    # Pemeriksaan tiap 2 menit tidak perlu disimpan jika sukses (database tidak membengkak); error tetap tersimpan
+    return workflow("IgarSchedule0001", "Wanychat · Scheduler", n, c, saveDataSuccessExecution="none")
 
 
 # ---------------------------------------------------------------- Admin API + login Instagram

@@ -7,6 +7,9 @@ const body = $('Webhook IG Event').first().json.body || {};
 
 const settings = {};
 for (const it of $('Baca Settings').all()) if (it.json.key) settings[it.json.key] = it.json.value ?? '';
+// Penanda antrean wany_inbox: ditulis paling akhir (node "Tandai Inbox" ada di posisi paling bawah)
+const inboxKey = $('Cek Tanda Tangan').first().json.key;
+const inboxDone = (status) => ({ json: { kind: 'inbox', key: inboxKey, status } });
 
 // Hanya terima event yang ditandatangani Meta (HMAC-SHA256 body mentah dengan App Secret)
 const rawIn = $('Ambil Body Mentah').first().json;
@@ -20,7 +23,7 @@ if (!expected || !rawIn.raw || given.length !== expected.length || !crypto.timin
   return [{ json: { kind: 'log', account_id: '', type: 'security', status: 'error', rule_id: '', rule_name: '', ig_user_id: '', username: '',
     ref_id: '', media_id: '', text: '', error: settings.app_secret ? 'Webhook ditolak: tanda tangan X-Hub-Signature-256 tidak cocok (cek App Secret)' : 'Webhook ditolak: app_secret belum disetel' } }];
 }
-if (settings.engine_enabled === 'false') return []; // mode perawatan dari dasbor superadmin
+if (settings.engine_enabled === 'false') return [inboxDone('skipped')]; // mode perawatan dari dasbor superadmin
 
 const plans = loadPlans(settings);
 const month = monthKey();
@@ -276,4 +279,5 @@ for (const [id, x] of Object.entries(usage)) {
 for (const [id, x] of Object.entries(groups)) {
   if (x.changed) out.push({ json: { kind: 'credits', account_id: id, used: x.used } });
 }
+out.push(inboxDone('done'));
 return out;
