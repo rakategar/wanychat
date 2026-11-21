@@ -41,7 +41,8 @@ class Client:
             self.n += 1
             body['id'] = self.n
         h = {'Content-Type': 'application/json', 'Accept': 'application/json, text/event-stream',
-             'Authorization': 'Bearer ' + self.token}
+             'Authorization': 'Bearer ' + self.token,
+             'User-Agent': 'wanychat-cli/1 (+https://wanychat.remot.in)'}  # UA bawaan urllib diblokir Cloudflare (1010)
         if self.session:
             h['Mcp-Session-Id'] = self.session
         req = urllib.request.Request(self.url, json.dumps(body).encode(), h, method='POST')
