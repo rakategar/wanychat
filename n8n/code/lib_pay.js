@@ -32,13 +32,16 @@ async function payCheckout(o) {
     const r = await mtCheckout(o);
     return { ok: r.ok, url: r.url, session: r.token, error: r.error };
   }
+  // DOKU menolak nama berisi simbol (mis. "Raka | Dev." dari profil IG): sisakan huruf, angka & spasi
+  const plain = (s, fallback) => String(s || '').normalize('NFKD').replace(/[\u0300-\u036f.,']/g, '').replace(/[^A-Za-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 50) || fallback;
   const r = await doku('POST', '/checkout/v1/payment', {
     order: {
-      amount: o.total, invoice_number: o.orderId, currency: 'IDR', line_items: o.items, auto_redirect: true,
+      amount: o.total, invoice_number: o.orderId, currency: 'IDR', auto_redirect: true,
+      line_items: o.items.map(it => Object.assign({}, it, { name: plain(it.name, 'Wanychat') })),
       callback_url: o.base + '/#/billing?paid=1', callback_url_result: o.base + '/#/billing?paid=1', language: 'ID',
     },
     payment: { payment_due_date: 120, payment_method_types: [o.method] },
-    customer: { id: o.customerId, name: o.customerName },
+    customer: { id: o.customerId, name: plain(o.customerName, 'Pelanggan Wanychat') },
     additional_info: { override_notification_url: o.base + DOKU_NOTIFY_PATH },
   });
   const res = r.body && r.body.response;
