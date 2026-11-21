@@ -23,9 +23,14 @@ const DOKU_LABELS = {
   EMONEY_DANA: 'DANA', EMONEY_OVO: 'OVO', EMONEY_SHOPEE_PAY: 'ShopeePay', EMONEY_LINKAJA: 'LinkAja', EMONEY_DOKU: 'DOKU e-Wallet',
   ONLINE_TO_OFFLINE_ALFA: 'Alfamart / Alfamidi', ONLINE_TO_OFFLINE_INDOMARET: 'Indomaret',
 };
-const DOKU_DEFAULT_METHODS = 'QRIS,VIRTUAL_ACCOUNT_BCA,VIRTUAL_ACCOUNT_BANK_MANDIRI,VIRTUAL_ACCOUNT_BRI,VIRTUAL_ACCOUNT_BNI,EMONEY_DANA,EMONEY_SHOPEE_PAY';
+// Checkout baru hanya lewat QRIS (fee + PPN ditanggung pelanggan). Label lain tetap ada untuk riwayat order lama.
+// Setting doku_methods hanya bisa mempersempit daftar ini, tidak bisa membuka metode lain.
+const DOKU_ALLOWED_METHODS = ['QRIS'];
 
-const dokuMethods = () => String(settings.doku_methods || DOKU_DEFAULT_METHODS).split(',').map(x => x.trim()).filter(x => DOKU_LABELS[x]);
+const dokuMethods = () => {
+  const want = String(settings.doku_methods || '').split(',').map(x => x.trim()).filter(x => DOKU_ALLOWED_METHODS.includes(x));
+  return want.length ? want : DOKU_ALLOWED_METHODS.slice();
+};
 
 function dokuFeeRate(method) {
   try {
