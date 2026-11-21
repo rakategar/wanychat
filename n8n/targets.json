@@ -20,7 +20,10 @@
     "mcp": "n8n-biznet",
     "projectId": "8jZR30tTpsRuEVfh",
     "followupEveryMin": 30,
-    "deepseek": null,
+    "deepseek": {
+      "id": "PV8HUWy2HKNpTU7i",
+      "name": "DeepSeek account"
+    },
     "workflows": {
       "IgarAdminApi0001": "aP0wOIWOIvC3HwNU",
       "IgarEngine000001": "3LVULp61236ib4Po",
