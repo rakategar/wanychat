@@ -1,7 +1,7 @@
 import { defineConfig, type ProxyOptions } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// /api, /sa-api, /plans.json, /webhook/wany-* -> n8n (default lokal; N8N_URL=https://kinasih.app.n8n.cloud untuk cloud).
+// /api, /sa-api, /plans.json, /webhook/wany-* -> n8n (default lokal; N8N_URL=https://n8n.remot.in untuk cloud).
 // PUBLIC_URL (opsional, khusus dev): Origin diganti domain produksi supaya cek CSRF n8n meloloskan panel lokal.
 const N8N = process.env.N8N_URL || 'http://localhost:5678'
 const PUBLIC = process.env.PUBLIC_URL

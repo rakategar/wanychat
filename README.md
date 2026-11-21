@@ -4,11 +4,11 @@ Auto-DM and auto-reply for Instagram comments, ManyChat-style. Users "Masuk deng
 
 ```
 Browser/PWA ─▶ Vercel (web/, Vite+React)          https://wanychat.remot.in
-              │  /api                ─rewrite─▶ n8n cloud /webhook/wany-api     (Wanychat · Admin API)
-              │  /sa-api             ─rewrite─▶ n8n cloud /webhook/wany-sa      (Wanychat · Superadmin)
-              │  /plans.json         ─rewrite─▶ n8n cloud /webhook/wany-plans   (Wanychat · Billing, CDN-cached)
-              │  /webhook/wany-*     ─rewrite─▶ n8n cloud /webhook/wany-login|oauth|doku
-Meta webhook ─────────────────────────────────▶ n8n cloud /webhook/wany-ig      (Wanychat · Engine, HMAC-verified)
+              │  /api                ─rewrite─▶ n8n VPS (n8n.remot.in) /webhook/wany-api     (Wanychat · Admin API)
+              │  /sa-api             ─rewrite─▶ n8n VPS (n8n.remot.in) /webhook/wany-sa      (Wanychat · Superadmin)
+              │  /plans.json         ─rewrite─▶ n8n VPS (n8n.remot.in) /webhook/wany-plans   (Wanychat · Billing, CDN-cached)
+              │  /webhook/wany-*     ─rewrite─▶ n8n VPS (n8n.remot.in) /webhook/wany-login|oauth|doku
+Meta webhook ─────────────────────────────────▶ n8n VPS (n8n.remot.in) /webhook/wany-ig      (Wanychat · Engine, HMAC-verified)
 DOKU ─────────▶ /webhook/wany-doku                                              (Wanychat · Billing)
                                                 n8n Scheduler: follow-ups every 30 min, token refresh at 03.00
                                                 Billing: pending DOKU order check + downgrade at 04.00

@@ -17,6 +17,34 @@
     }
   },
   "cloud": {
+    "mcp": "n8n-biznet",
+    "projectId": "8jZR30tTpsRuEVfh",
+    "followupEveryMin": 30,
+    "deepseek": null,
+    "workflows": {
+      "IgarAdminApi0001": "aP0wOIWOIvC3HwNU",
+      "IgarEngine000001": "3LVULp61236ib4Po",
+      "IgarSchedule0001": "S2Iv0Ae1MCaSboSY",
+      "WanyBilling00001": "p2VzwSx4gU16VTJN",
+      "WanySuperAdmin01": "W4AypZ9iU6rWb2c4"
+    },
+    "tables": {
+      "settings": "YMGfBdIgw7eOTcUb",
+      "rules": "pzDznXnZFuF9EhXl",
+      "contacts": "PjZOm4kpUkiflY9r",
+      "events": "XYgAeVfEyEijOyRN",
+      "followups": "jjypp6Psp1d9vAEC",
+      "accounts": "L6rCmuakkZpLfS56",
+      "sessions": "l60gnX1uNsgZogaV",
+      "billing": "hPfGj7GWxduX2WZd",
+      "payments": "ebJnIUqLlGmINg9m",
+      "usage": "tOkbWsE39CVKovFm",
+      "admin_sessions": "pMJyMya7VF0cMH1A",
+      "audit": "yXHCJUKwNySOUp5z",
+      "credits": "snQqU3jmXHRJZDVt"
+    }
+  },
+  "cloud_lama": {
     "mcp": "n8n-cloud",
     "projectId": "NeafQxF71yhfAYMc",
     "followupEveryMin": 30,

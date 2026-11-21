@@ -4,10 +4,10 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "rewrites": [
-    { "source": "/api", "destination": "https://kinasih.app.n8n.cloud/webhook/wany-api" },
-    { "source": "/sa-api", "destination": "https://kinasih.app.n8n.cloud/webhook/wany-sa" },
-    { "source": "/plans.json", "destination": "https://kinasih.app.n8n.cloud/webhook/wany-plans" },
-    { "source": "/webhook/wany-:path", "destination": "https://kinasih.app.n8n.cloud/webhook/wany-:path" }
+    { "source": "/api", "destination": "https://n8n.remot.in/webhook/wany-api" },
+    { "source": "/sa-api", "destination": "https://n8n.remot.in/webhook/wany-sa" },
+    { "source": "/plans.json", "destination": "https://n8n.remot.in/webhook/wany-plans" },
+    { "source": "/webhook/wany-:path", "destination": "https://n8n.remot.in/webhook/wany-:path" }
   ],
   "headers": [
     {
