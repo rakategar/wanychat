@@ -48,7 +48,7 @@ function Connect({ full }: { full: boolean }) {
           <li>Video dan komentarmu langsung tampil di sini.</li>
         </ol>
         <div><a className="btn tt-btn" href={connectUrl('tiktok')}><ChannelLogo type="tiktok" size={20} /> Hubungkan TikTok</a></div>
-        {full && <p className="hint" style={{ margin: 0 }}>Kuota akun paket dihitung gabungan Instagram + TikTok. Cek slot di menu Akun.</p>}
+        {full && <p className="hint" style={{ margin: 0 }}>Batas akun paket dihitung per platform: Instagram dan TikTok masing-masing punya slot sendiri.</p>}
       </section>
       <section className="card stack">
         <h3 className="card-title">Izin yang diminta</h3>
@@ -121,7 +121,7 @@ function Connected({ tiktok, billing, inactive, view, go }: { tiktok: TikTokAcco
 
       {inactive && (
         <div className="callout pink" role="status" style={{ margin: 0 }}>
-          Automasi akun TikTok ini berhenti: paket {billing?.plan.name} hanya untuk {billing?.accounts_limit} akun sosial (Instagram + TikTok).
+          Automasi akun TikTok ini berhenti: paket {billing?.plan.name} hanya untuk {billing?.accounts_limit} akun TikTok.
           Naikkan paket atau lepas akun lain. <a href="#/billing">Lihat paket</a>
         </div>
       )}

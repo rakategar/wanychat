@@ -97,8 +97,8 @@ if (finalBill && isTrue(finalBill.suspended)) return fail('Akun ini dinonaktifka
 if (!adopt && !(existing && groupOf(existing) === gid && existing.owner_id !== 'unlinked')) {
   const plan = effectivePlan(billingBy[gid], plans);
   const max = Math.max(1, Number(plan.accounts) || 1);
-  const used = all.filter(a => groupOf(a) === gid && a.access_token && String(a.ig_user_id) !== igId).length + ttMine.length;
-  if (used + 1 + repoint.length > max) return fail('Paket ' + plan.name + ' maksimal ' + max + ' akun sosial. Upgrade di menu Langganan.');
+  const used = all.filter(a => groupOf(a) === gid && a.access_token && String(a.ig_user_id) !== igId).length; // batas per platform: TikTok tidak dihitung
+  if (used + 1 + repoint.length > max) return fail('Paket ' + plan.name + ' maksimal ' + max + ' akun Instagram. Upgrade di menu Langganan.');
 }
 
 // 5. langganan webhook komentar & DM (tidak perlu disetel manual)

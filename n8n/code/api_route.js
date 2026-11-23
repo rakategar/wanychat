@@ -55,7 +55,7 @@ const billingView = () => ({
   card_hint: billing ? billing.card_hint || '' : '',
   source: billing ? billing.source || '' : '',
   usage, month, rules_used: myRules.length,
-  credits, accounts_limit: accountsLimit, accounts_used: members.length + ttRows.length,
+  credits, accounts_limit: accountsLimit, accounts_used: members.length, tt_used: ttRows.length,
   group_inactive: !!acc && !activeInGroup(acc, members, plan), is_owner: true, owner_username: '',
 });
 

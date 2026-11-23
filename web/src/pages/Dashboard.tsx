@@ -29,7 +29,7 @@ function StartDashboard({ me, go }: { me: Me; go: (p: Page) => void }) {
           <p style={{ margin: 0 }}>Instagram: komentar jadi DM otomatis + tombol + AI. TikTok: kelola & balas komentar video dari satu tempat.
             Kamu masuk lewat halaman izin resmi masing-masing; Wanychat tidak pernah melihat password-nya.</p>
           <ConnectButtons />
-          <p className="hint" style={{ margin: 0 }}>Instagram harus akun Profesional (Kreator/Bisnis). Paket {billing.plan.name}: {billing.accounts_limit} akun sosial.</p>
+          <p className="hint" style={{ margin: 0 }}>Instagram harus akun Profesional (Kreator/Bisnis). Paket {billing.plan.name}: {billing.accounts_limit} Instagram + {billing.accounts_limit} TikTok.</p>
         </section>
         <section className="card stack">
           <h2 className="card-title" style={{ margin: 0 }}>Akun terhubung</h2>

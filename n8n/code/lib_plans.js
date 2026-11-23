@@ -52,14 +52,13 @@ function activeInGroup(acc, accounts, plan) {
   const i = members.findIndex(a => String(a.ig_user_id) === String(acc.ig_user_id));
   return i >= 0 && i < Math.max(1, Number(plan.accounts) || 1);
 }
-// Akun TikTok aktif bila urutannya (setelah semua akun Instagram grup, lalu TikTok terlama dulu) masih dalam batas paket
+// Batas akun paket berlaku per platform: akun TikTok aktif bila urutannya (terlama dulu) masih dalam batas paket
 function ttActiveInGroup(tt, igAccounts, ttAccounts, plan) {
   const gid = String(tt.owner_id || '');
-  const igCount = groupMembers(igAccounts, gid).length;
   const list = ttAccounts.filter(a => a && a.open_id && a.access_token && String(a.owner_id) === gid).sort((a, b) =>
     String(a.connected_at || a.createdAt || '').localeCompare(String(b.connected_at || b.createdAt || '')) || Number(a.id) - Number(b.id));
   const i = list.findIndex(a => String(a.open_id) === String(tt.open_id));
-  return i >= 0 && igCount + i < Math.max(1, Number(plan.accounts) || 1);
+  return i >= 0 && i < Math.max(1, Number(plan.accounts) || 1);
 }
 // Pemakaian bulan ini untuk seluruh akun satu grup (kuota paket dibagi bersama)
 // `accounts` boleh berisi akun TikTok juga (baris wany_tt_accounts: open_id + owner_id), pemakaian AI-nya ikut dihitung

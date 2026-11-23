@@ -220,7 +220,7 @@ function UserApp() {
         {me.announcement && <div className="callout yellow announce" role="status">📣 {me.announcement}</div>}
         {billing?.group_inactive && channel === 'instagram' && (
           <div className="callout pink announce" role="status">
-            Akun ini tidak aktif: paket {billing.plan.name} hanya untuk {billing.accounts_limit} akun sosial. Automasi akun ini berhenti sampai paket dinaikkan
+            Akun ini tidak aktif: paket {billing.plan.name} hanya untuk {billing.accounts_limit} akun Instagram. Automasi akun ini berhenti sampai paket dinaikkan
             atau akun lain dilepas. <a href="#/billing">Lihat paket</a>
           </div>
         )}

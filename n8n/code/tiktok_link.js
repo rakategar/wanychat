@@ -22,10 +22,10 @@ if (existing && owner && owner !== 'unlinked' && !mine) return fail('Akun TikTok
 const billing = latestBy($('Baca Billing TikTok').all().map(i => i.json), 'account_id')[gid];
 if (billing && isTrue(billing.suspended)) return fail('Akun ini dinonaktifkan. Hubungi admin Wanychat.');
 const plan = effectivePlan(billing, loadPlans(settings));
-const igCount = $('Baca Akun Grup TikTok').all().map(i => i.json).filter(a => a && a.ig_user_id && groupOf(a) === gid).length;
 const ttCount = ttRows.filter(a => String(a.owner_id) === gid && a.open_id !== x.open_id).length;
 const max = Math.max(1, Number(plan.accounts) || 1);
-if (!mine && igCount + ttCount >= max) return fail('Paket ' + plan.name + ' maksimal ' + max + ' akun sosial. Upgrade di menu Langganan.');
+// batas paket per platform: akun Instagram tidak dihitung
+if (!mine && ttCount >= max) return fail('Paket ' + plan.name + ' maksimal ' + max + ' akun TikTok. Upgrade di menu Langganan.');
 
 const account = Object.assign({}, x.account, {
   owner_id: gid,

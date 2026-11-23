@@ -39,7 +39,7 @@ export const fmt = (n: number) => Math.round(n).toLocaleString('id-ID')
 export function planFeatures(p: Plan): string[] {
   const accounts = p.accounts || 1
   return [
-    accounts > 1 ? `${accounts} akun Instagram/TikTok (kuota dibagi)` : '1 akun Instagram atau TikTok',
+    accounts > 1 ? `${accounts} akun Instagram + ${accounts} akun TikTok` : '1 akun Instagram + 1 akun TikTok',
     p.rules ? `${p.rules} automasi` : 'Automasi tanpa batas',
     `${fmt(p.dm)} DM otomatis / bulan`,
     'Balas komentar + DM + tombol',

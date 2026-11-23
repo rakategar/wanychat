@@ -186,7 +186,11 @@ check('rule nonaktif -> tidak memanggil TikTok', api.calls.length === 0, api.cal
 out = await run('tt_auto.js', fixture({ billing: [{ id: 1, account_id: GID, plan: 'free', suspended: true }] }), api.http, sd)
 check('akun dinonaktifkan superadmin -> dilewati', api.calls.length === 0, api.calls)
 out = await run('tt_auto.js', fixture({ ig: igAcc }), api.http, sd)
-check('paket Gratis (1 akun) sudah dipakai IG -> TikTok tidak aktif', api.calls.length === 0, api.calls)
+check('paket Gratis: IG + TikTok masing-masing 1 -> TikTok tetap aktif', api.calls.length > 0, api.calls)
+api = fakeTikTok(); sd = {}
+out = await run('tt_auto.js', fixture({ accounts: [ttAcc(), ttAcc({ open_id: 'tt-kedua', connected_at: '2030-01-01T00:00:00Z' })] }), api.http, sd)
+check('paket Gratis: TikTok kedua tidak aktif', !api.calls.some((c) => c.includes('tt-kedua')) && api.calls.length > 0, api.calls)
+api = fakeTikTok(); sd = {}
 out = await run('tt_auto.js', fixture({ accounts: [ttAcc({ owner_id: 'unlinked', access_token: '' })] }), api.http, sd)
 check('akun TikTok dilepas -> dilewati', api.calls.length === 0, api.calls)
 

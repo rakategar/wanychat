@@ -57,7 +57,7 @@ export const FAQ = [
   },
   {
     q: 'Bisa pakai beberapa akun Instagram?',
-    a: <>Bisa. Paket <b>Pro</b> untuk 2 akun dan <b>Bisnis</b> untuk 5 akun (Instagram dan TikTok dihitung bersama). Tambahkan dari menu <b>Akun → Tambah Instagram / Tambah TikTok</b>.
+    a: <>Bisa. Paket <b>Pro</b> untuk 2 akun dan <b>Bisnis</b> untuk 5 akun per platform, jadi Pro bisa 2 Instagram + 2 TikTok. Paket Gratis pun bisa 1 Instagram + 1 TikTok. Tambahkan dari menu <b>Akun → Tambah Instagram / Tambah TikTok</b>.
       Tiap akun punya automasi dan dasbor sendiri, kuota paket dipakai bersama.</>,
   },
   {

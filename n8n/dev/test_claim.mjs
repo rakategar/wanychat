@@ -74,7 +74,7 @@ r = await run('oauth_callback.js', igFixture({ me: U, accounts: [acc('1700000000
 check('Paket Gratis (1 akun) + IG kedua -> ditolak batas akun', !r.ok && /maksimal 1 akun/.test(decodeURIComponent(r.location)), r)
 
 r = await run('oauth_callback.js', igFixture({ me: U, tt: [{ open_id: 'tt1', owner_id: U.uid, access_token: 't' }] }), igHttp('17000000000000022'))
-check('Batas akun dihitung gabungan IG + TikTok', !r.ok && /maksimal 1 akun/.test(decodeURIComponent(r.location)), r)
+check('Batas akun per platform: Gratis + sudah ada TikTok -> IG tetap boleh', r.ok && r.account.owner_id === U.uid, r)
 
 r = await run('oauth_callback.js', igFixture({ me: U, accounts: [acc('17000000000000020', U.uid)] }), igHttp('17000000000000020'))
 check('Hubungkan ulang IG sendiri -> boleh (tanpa cek batas)', r.ok && r.account.owner_id === U.uid, r)
@@ -107,7 +107,9 @@ check('TikTok baru -> milik grup user', r.ok && r.account.owner_id === U.uid && 
 r = await run('tiktok_link.js', ttFix({ x: ttx('7002'), related: [{ id: 1, open_id: '7002', owner_id: 'u_' + 'b'.repeat(24) }] }))
 check('TikTok milik user lain -> ditolak', !r.ok && /akun Wanychat lain/.test(decodeURIComponent(r.location)), r)
 r = await run('tiktok_link.js', ttFix({ x: ttx('7003'), ig: [acc('17000000000000050', U.uid)] }))
-check('Gratis + sudah ada IG -> TikTok ditolak batas akun', !r.ok && /maksimal 1 akun/.test(decodeURIComponent(r.location)), r)
+check('Batas akun per platform: Gratis + sudah ada IG -> TikTok tetap boleh', r.ok && r.account.owner_id === U.uid, r)
+r = await run('tiktok_link.js', ttFix({ x: ttx('7007'), related: [{ id: 1, open_id: '7001', owner_id: U.uid, access_token: 'a' }] }))
+check('Gratis + sudah ada TikTok -> TikTok kedua ditolak', !r.ok && /maksimal 1 akun TikTok/.test(decodeURIComponent(r.location)), r)
 r = await run('tiktok_link.js', ttFix({ x: ttx('7004', { username: '' }), related: [{ id: 1, open_id: '7004', owner_id: U.uid, username: 'lama', connected_at: '2026-01-01T00:00:00Z' }] }))
 check('Hubungkan ulang TikTok sendiri -> data lama dipertahankan', r.ok && r.account.username === 'lama' && r.account.connected_at === '2026-01-01T00:00:00Z', r)
 r = await run('tiktok_link.js', ttFix({ x: ttx('7005'), related: [{ id: 1, open_id: '7005', owner_id: 'unlinked' }] }))

@@ -177,20 +177,21 @@ function Status({ ok, title, desc, action }: { ok: boolean | null; title: string
   )
 }
 
-// Akun sosial milik user (Instagram + TikTok): kuota paket dipakai bersama, tiap akun punya dasbor sendiri
+// Akun sosial milik user: batas akun paket per platform (Instagram & TikTok masing-masing), tiap akun punya dasbor sendiri
 function LinkedAccounts({ me, reload }: { me: Me; reload: () => Promise<Me> }) {
   const toast = useToast()
   const [busy, setBusy] = useState('')
   const [unlink, setUnlink] = useState<SocialAccount | null>(null)
   const { accounts, billing } = me
   const limit = billing.accounts_limit
-  const free = Math.max(0, limit - accounts.length)
+  const freeIg = Math.max(0, limit - accounts.filter((a) => a.type === 'instagram').length)
+  const freeTt = Math.max(0, limit - accounts.filter((a) => a.type === 'tiktok').length)
   return (
     <section className="card stack">
       <div>
         <h2 className="card-title">Akun sosial terhubung</h2>
         <p className="card-sub" style={{ margin: 0 }}>
-          Paket {billing.plan.name}: {limit} akun Instagram/TikTok{limit > 1 ? ', kuota dipakai bersama' : ''}.{' '}
+          Paket {billing.plan.name}: {limit} akun Instagram + {limit} akun TikTok{limit > 1 ? ', kuota DM & AI dipakai bersama' : ''}.{' '}
           {limit < 5 && <a href="#/billing">Butuh lebih banyak?</a>}
         </p>
       </div>
@@ -215,16 +216,16 @@ function LinkedAccounts({ me, reload }: { me: Me; reload: () => Promise<Me> }) {
           </div>
         ))}
       </div>
-      {free > 0 ? (
+      {freeIg + freeTt > 0 ? (
         <>
           <div className="row">
-            <a className="btn ig-btn" href={connectUrl('instagram')}><ChannelLogo type="instagram" size={20} /> Tambah Instagram</a>
-            <a className="btn tt-btn" href={connectUrl('tiktok')}><ChannelLogo type="tiktok" size={20} /> Tambah TikTok</a>
+            {freeIg > 0 && <a className="btn ig-btn" href={connectUrl('instagram')}><ChannelLogo type="instagram" size={20} /> Tambah Instagram</a>}
+            {freeTt > 0 && <a className="btn tt-btn" href={connectUrl('tiktok')}><ChannelLogo type="tiktok" size={20} /> Tambah TikTok</a>}
           </div>
-          <p className="hint" style={{ margin: 0 }}>{free} slot tersisa. Kamu akan diarahkan ke halaman izin resmi. Untuk menambah akun lain di aplikasi yang sama,
+          <p className="hint" style={{ margin: 0 }}>Slot tersisa: {freeIg} Instagram, {freeTt} TikTok. Kamu akan diarahkan ke halaman izin resmi. Untuk menambah akun lain di aplikasi yang sama,
             keluar dulu dari akun yang sedang login di instagram.com / tiktok.com.</p>
         </>
-      ) : <p className="hint" style={{ margin: 0 }}>Semua slot paket terpakai. <a href="#/billing">Naikkan paket</a> untuk menambah akun.</p>}
+      ) : <p className="hint" style={{ margin: 0 }}>Semua slot Instagram & TikTok paket ini terpakai. <a href="#/billing">Naikkan paket</a> untuk menambah akun.</p>}
       {unlink && (
         <Confirm
           title={`Lepas @${unlink.username || unlink.id}?`}
