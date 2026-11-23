@@ -33,12 +33,15 @@ const plans = loadPlans(settings);
 const month = monthKey();
 const members = groupMembers(igRows, gid);
 const billing = user ? latestBy($('Baca Billing Akun').all().map(i => i.json), 'account_id')[gid] || null : null;
-const usage = user ? groupUsage($('Baca Usage Akun').all().map(i => i.json).filter(u => u.month === month), members, gid) : { dm: 0, ai: 0 };
+const usage = user ? groupUsage($('Baca Usage Akun').all().map(i => i.json).filter(u => u.month === month), members.concat(ttRows), gid) : { dm: 0, ai: 0 };
 const credit = user ? latestBy($('Baca Kredit').all().map(i => i.json), 'account_id')[gid] || {} : {};
 const credits = creditBalance(credit);
 const plan = effectivePlan(billing, plans);
 const topups = loadTopups(settings);
-const myRules = $('Baca Rules Akun').all().map(i => i.json).filter(r => r.id && acc && String(r.account_id) === String(acc.ig_user_id));
+const ruleRows = $('Baca Rules Akun').all().map(i => i.json).filter(r => r && r.id);
+const myRules = ruleRows.filter(r => acc && String(r.account_id) === String(acc.ig_user_id) && r.channel !== 'tiktok');
+const ttRules = ruleRows.filter(r => tt && String(r.account_id) === String(tt.open_id) && r.channel === 'tiktok');
+const isTt = p.type === 'tiktok';
 const publicPlan = (x) => ({ id: x.id, name: x.name, price: Number(x.price) || 0, dm: Number(x.dm) || 0, ai: Number(x.ai) || 0, rules: Number(x.rules) || 0,
   followup: !!x.followup, persona: !!x.persona, accounts: Number(x.accounts) || 1, analytics: !!x.analytics, watermark: !!x.watermark });
 const accountsLimit = Math.max(1, Number(plan.accounts) || 1);
@@ -101,7 +104,8 @@ const listAccounts = () => members.map((a, i) => ({
   current: !!acc && String(a.ig_user_id) === String(acc.ig_user_id), active: i < accountsLimit, connected_at: a.connected_at || '',
   token_refresh_error: a.token_refresh_error || '',
 })).concat(ttRows.map(a => Object.assign(ttPublic(a), {
-  type: 'tiktok', id: String(a.open_id), name: a.display_name || '', current: !!tt && String(a.open_id) === String(tt.open_id), active: true,
+  type: 'tiktok', id: String(a.open_id), name: a.display_name || '', current: !!tt && String(a.open_id) === String(tt.open_id),
+  active: ttActiveInGroup(a, members, ttRows, plan),
 })));
 // Sesi menunjuk akun yang sedang dibuka; disejajarkan bila akun lama sudah dilepas / belum dipilih
 const sessionStale = () => user && (String(session.ig_user_id || '') !== (acc ? String(acc.ig_user_id) : '') || String(session.tt_open_id || '') !== (tt ? String(tt.open_id) : ''));
@@ -125,6 +129,34 @@ async function ttToken() {
 }
 const ttRespond = (response) => ttUpdate ? reply('tt_update', response, { tt: ttUpdate }) : reply('direct', response);
 const ttFail = (r) => ttRespond({ ok: false, error: r.code === 40105 || /token/i.test(r.error) ? 'Izin TikTok kedaluwarsa. Hubungkan ulang akun TikTok di menu Akun.' : 'TikTok: ' + r.error });
+
+// Rule automasi komentar TikTok: keyword -> balas publik (maks 150 karakter) / sembunyikan, atau balasan AI bila tidak cocok
+function saveTtRule(r) {
+  if (!tt) return fail('Hubungkan akun TikTok dulu.', 409);
+  if (!String(r.name || '').trim()) return fail('Nama automasi wajib diisi');
+  const match = ['contains', 'exact', 'any'].includes(r.match_mode) ? r.match_mode : 'contains';
+  const hide = !!r.hide_comment;
+  if (hide && match === 'any') return fail('Automasi sembunyikan komentar wajib memakai keyword (supaya tidak menyembunyikan semua komentar).');
+  if (match !== 'any' && !String(r.keywords || '').trim()) return fail('Isi minimal satu keyword, atau pilih "Semua"');
+  const replies = hide ? '' : String(r.comment_replies || '').split('\n').map(x => x.trim()).filter(Boolean).slice(0, 20);
+  if (!hide && replies.some(x => x.length > 150)) return fail('Balasan TikTok maksimal 150 karakter per baris.');
+  const ai = !hide && !!r.ai_fallback;
+  if (!hide && !replies.length && !ai) return fail('Isi minimal satu variasi balasan, nyalakan balasan AI, atau pilih "Sembunyikan komentar".');
+  const rowId = Number(r.id) > 0 ? Number(r.id) : -1;
+  if (rowId > 0 && !ttRules.some(x => Number(x.id) === rowId)) return fail('Automasi tidak ditemukan', 404);
+  if (rowId < 0 && Number(plan.rules) > 0 && ttRules.length >= Number(plan.rules)) return fail('Paket ' + plan.name + ' maksimal ' + plan.rules + ' automasi per akun. Upgrade di menu Langganan.');
+  if (ai && !(Number(plan.ai) > 0) && !(credits > 0)) return fail('Balasan AI butuh paket Kreator ke atas atau kredit AI. Beli top-up di menu Langganan.');
+  const videos = String(r.post_ids || '*').split(/[,\s]+/).filter(x => x === '*' || /^\d{5,30}$/.test(x));
+  return [{ json: {
+    route: 'rules_save', account_id: String(tt.open_id), row_id: rowId,
+    name: String(r.name).trim().slice(0, 120), active: r.active !== false, channel: 'tiktok',
+    post_ids: (videos.includes('*') || !videos.length ? '*' : videos.slice(0, 30).join(',')),
+    keywords: String(r.keywords || '').trim().slice(0, 1000), match_mode: match,
+    comment_replies: hide ? '' : replies.join('\n'), dm_message: '', dm_button_title: '', dm_content: '',
+    followup_enabled: false, followup_delay_min: 60, followup_message: '',
+    ai_fallback: ai, ai_context: ai ? String(r.ai_context || '').trim().slice(0, 4000) : '', hide_comment: hide,
+  } }];
+}
 
 if (!sameOrigin) return reply('deny', { ok: false, error: 'Permintaan ditolak' });
 if (!user) return reply('deny', { ok: false, error: 'Silakan masuk' });
@@ -258,9 +290,10 @@ switch (action) {
   }
 
   case 'rules.list':
-    return reply('direct', { ok: true, rules: myRules });
+    return reply('direct', { ok: true, rules: isTt ? ttRules : myRules });
 
   case 'rules.save': {
+    if (isTt) return saveTtRule(p.rule || {});
     if (!acc) return needIg();
     const r = p.rule || {};
     if (!String(r.name || '').trim()) return fail('Nama automasi wajib diisi');
@@ -291,12 +324,17 @@ switch (action) {
       followup_message: String(r.followup_message || '').trim().slice(0, 1000),
       ai_fallback: !!r.ai_fallback,
       ai_context: String(r.ai_context || '').trim().slice(0, 4000),
+      hide_comment: false,
     } }];
   }
 
   case 'rules.delete':
-    if (!acc) return needIg();
     if (!(Number(p.id) > 0)) return fail('id tidak valid');
+    if (isTt) {
+      if (!tt) return fail('Hubungkan akun TikTok dulu.', 409);
+      return reply('rules_delete', null, { row_id: Number(p.id), account_id: String(tt.open_id) });
+    }
+    if (!acc) return needIg();
     return reply('rules_delete', null, { row_id: Number(p.id) });
 
   case 'accounts.list':
@@ -322,7 +360,8 @@ switch (action) {
       const t = ttRows.find(a => String(a.open_id) === id);
       if (!t) return fail('Akun TikTok tidak ditemukan', 404);
       await ttRevoke(t.access_token); // gagal revoke tetap dilepas; izin bisa dicabut user dari aplikasi TikTok
-      return reply('tt_update', { ok: true }, { tt: ttRow(t, { owner_id: 'unlinked', access_token: '', refresh_token: '', token_refresh_error: '' }) });
+      // Rule & log akun ini ikut dihapus: bila akun TikTok ini nanti ditautkan akun Wanychat lain, data pemilik lama tidak terbawa
+      return reply('tt_unlink', { ok: true }, { tt: ttRow(t, { owner_id: 'unlinked', access_token: '', refresh_token: '', token_refresh_error: '' }) });
     }
     const target = members.find(a => String(a.ig_user_id) === id);
     if (!target) return fail('Akun Instagram tidak ditemukan', 404);
@@ -336,7 +375,8 @@ switch (action) {
     if (!tt) return reply('direct', { ok: true, connected: false, ready: ttReady() });
     const token = await ttToken();
     const r = await ttProfile(tt.open_id, token);
-    return ttRespond({ ok: true, connected: true, ready: true, account: ttPublic(ttUpdate || tt), profile: r.ok ? r.data : null, profile_error: r.ok ? '' : r.error });
+    return ttRespond({ ok: true, connected: true, ready: true, account: ttPublic(ttUpdate || tt), profile: r.ok ? r.data : null, profile_error: r.ok ? '' : r.error,
+      active: ttActiveInGroup(tt, members, ttRows, plan), rules_used: ttRules.length });
   }
 
   case 'tiktok.videos': {
@@ -381,6 +421,8 @@ switch (action) {
   }
 
   case 'events.list':
+    if (isTt) return tt ? reply('events_list', null, { limit: Math.min(Number(p.limit) || 200, 500), account_id: String(tt.open_id) })
+      : reply('direct', { ok: true, events: [] });
     if (!acc) return reply('direct', { ok: true, events: [] });
     return reply('events_list', null, { limit: Math.min(Number(p.limit) || 200, 500) });
 
@@ -389,6 +431,7 @@ switch (action) {
     return reply('followups_list', null);
 
   case 'logs.clear':
+    if (isTt) return tt ? reply('logs_clear', null, { account_id: String(tt.open_id) }) : reply('direct', { ok: true });
     if (!acc) return reply('direct', { ok: true });
     return reply('logs_clear', null);
 

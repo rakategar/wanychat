@@ -1,19 +1,23 @@
 import { useCallback, useEffect, useState } from 'react'
-import { api, connectUrl, type SocialAccount, type TikTokAccount } from '../api'
-import { Confirm, Empty, Spinner, timeAgo, useToast } from '../components/ui'
+import { api, connectUrl, type Billing, type SocialAccount, type TikTokAccount } from '../api'
+import { Confirm, Empty, Segmented, Spinner, timeAgo, useToast } from '../components/ui'
 import { compact, ttDate, TT_SCOPES, type TtComment, type TtProfile, type TtVideo } from '../tiktok'
+import { TtActivity, TtAutomations } from './TikTokAutomations'
+
+type Tab = 'comments' | 'automations' | 'activity'
 
 // Kanal TikTok: hubungkan akun lewat halaman izin TikTok, lalu kelola komentar video dari Wanychat.
-export default function TikTokPage({ tiktok, accounts }: { tiktok: TikTokAccount | null; accounts: SocialAccount[] }) {
+export default function TikTokPage({ tiktok, accounts, billing }: { tiktok: TikTokAccount | null; accounts: SocialAccount[]; billing: Billing | null }) {
   return (
     <>
       <div className="page-head">
         <div>
           <h1>TikTok</h1>
-          <p>Lihat video, baca & balas komentar, dan sembunyikan spam akun TikTok kamu.</p>
+          <p>Balas komentar otomatis, sembunyikan spam, dan kelola komentar video TikTok kamu.</p>
         </div>
       </div>
-      {tiktok ? <Connected key={tiktok.open_id} tiktok={tiktok} /> : <Connect full={accounts.length > 0} />}
+      {tiktok ? <Connected key={tiktok.open_id} tiktok={tiktok} billing={billing} inactive={accounts.some((a) => a.type === 'tiktok' && a.id === tiktok.open_id && !a.active)} />
+        : <Connect full={accounts.length > 0} />}
     </>
   )
 }
@@ -50,8 +54,9 @@ function Connect({ full }: { full: boolean }) {
   )
 }
 
-function Connected({ tiktok }: { tiktok: TikTokAccount }) {
+function Connected({ tiktok, billing, inactive }: { tiktok: TikTokAccount; billing: Billing | null; inactive: boolean }) {
   const toast = useToast()
+  const [tab, setTab] = useState<Tab>('automations')
   const [profile, setProfile] = useState<TtProfile | null>(null)
   const [profileError, setProfileError] = useState('')
   const [videos, setVideos] = useState<TtVideo[] | null>(null)
@@ -103,11 +108,19 @@ function Connected({ tiktok }: { tiktok: TikTokAccount }) {
         </div>
       </section>
 
-      <section className="callout yellow small" style={{ margin: 0 }}>
-        ⚡ Automasi TikTok (keyword → balas komentar otomatis, balasan AI, sembunyikan spam otomatis) sedang disiapkan. Sementara ini, balas & sembunyikan komentar dari sini.
-      </section>
+      {inactive && (
+        <div className="callout pink" role="status" style={{ margin: 0 }}>
+          Automasi akun TikTok ini berhenti: paket {billing?.plan.name} hanya untuk {billing?.accounts_limit} akun sosial (Instagram + TikTok).
+          Naikkan paket atau lepas akun lain. <a href="#/billing">Lihat paket</a>
+        </div>
+      )}
 
-      <div className="tt-layout">
+      <Segmented<Tab> value={tab} onChange={setTab} options={[
+        { value: 'automations', label: '⚡ Automasi' }, { value: 'comments', label: '💬 Komentar' }, { value: 'activity', label: '📜 Aktivitas' }]} />
+
+      {tab === 'automations' && <TtAutomations tiktok={tiktok} billing={billing} videos={videos} />}
+      {tab === 'activity' && <TtActivity />}
+      {tab === 'comments' && <div className="tt-layout">
         <section className="card stack">
           <h2 className="card-title" style={{ margin: 0 }}>Video</h2>
           {!videos ? <Spinner /> : videos.length === 0 ? <p className="muted" style={{ margin: 0 }}>Belum ada video.</p> : (
@@ -126,7 +139,7 @@ function Connected({ tiktok }: { tiktok: TikTokAccount }) {
         <section className="card stack">
           {video ? <Comments key={video.item_id} video={video} /> : <Empty icon="💬" title="Pilih video">Komentar video yang dipilih tampil di sini.</Empty>}
         </section>
-      </div>
+      </div>}
     </div>
   )
 }

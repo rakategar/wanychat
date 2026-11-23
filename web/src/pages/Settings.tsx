@@ -228,7 +228,9 @@ function LinkedAccounts({ me, reload }: { me: Me; reload: () => Promise<Me> }) {
       {unlink && (
         <Confirm
           title={`Lepas @${unlink.username || unlink.id}?`}
-          body={<p style={{ margin: 0 }}>Automasi akun ini berhenti dan izinnya dihapus dari Wanychat. Automasi & log tetap tersimpan dan kembali aktif kalau akun dihubungkan lagi.</p>}
+          body={<p style={{ margin: 0 }}>{unlink.type === 'tiktok'
+            ? 'Izin akun TikTok ini dihapus dari Wanychat, dan semua automasi serta log aktivitasnya ikut dihapus permanen.'
+            : 'Automasi akun ini berhenti dan izinnya dihapus dari Wanychat. Automasi & log tetap tersimpan dan kembali aktif kalau akun dihubungkan lagi.'}</p>}
           confirmLabel="Lepas akun"
           onCancel={() => setUnlink(null)}
           onConfirm={async () => {

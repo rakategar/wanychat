@@ -1,7 +1,7 @@
 // ---- lib_plans.js (disisipkan build.py lewat //#include) ----
 // Paket langganan. Sumber kebenaran: setting "plans" (JSON, diubah dari dasbor superadmin); ini nilai bawaan.
 // dm = DM otomatis / bulan, ai = balasan AI / bulan (0 = tanpa AI), rules = jumlah automasi (0 = tanpa batas),
-// accounts = akun Instagram per langganan (kuota dibagi bersama), analytics = dasbor analitik lead,
+// accounts = akun Instagram + TikTok per langganan (kuota dibagi bersama), analytics = dasbor analitik lead,
 // watermark = DM diberi tanda "via Wanychat" (promosi di paket gratis)
 const DEFAULT_PLANS = [
   { id: 'free', name: 'Gratis', price: 0, dm: 100, ai: 0, rules: 3, followup: false, persona: false, accounts: 1, analytics: false, watermark: true },
@@ -52,9 +52,19 @@ function activeInGroup(acc, accounts, plan) {
   const i = members.findIndex(a => String(a.ig_user_id) === String(acc.ig_user_id));
   return i >= 0 && i < Math.max(1, Number(plan.accounts) || 1);
 }
+// Akun TikTok aktif bila urutannya (setelah semua akun Instagram grup, lalu TikTok terlama dulu) masih dalam batas paket
+function ttActiveInGroup(tt, igAccounts, ttAccounts, plan) {
+  const gid = String(tt.owner_id || '');
+  const igCount = groupMembers(igAccounts, gid).length;
+  const list = ttAccounts.filter(a => a && a.open_id && a.access_token && String(a.owner_id) === gid).sort((a, b) =>
+    String(a.connected_at || a.createdAt || '').localeCompare(String(b.connected_at || b.createdAt || '')) || Number(a.id) - Number(b.id));
+  const i = list.findIndex(a => String(a.open_id) === String(tt.open_id));
+  return i >= 0 && igCount + i < Math.max(1, Number(plan.accounts) || 1);
+}
 // Pemakaian bulan ini untuk seluruh akun satu grup (kuota paket dibagi bersama)
+// `accounts` boleh berisi akun TikTok juga (baris wany_tt_accounts: open_id + owner_id), pemakaian AI-nya ikut dihitung
 function groupUsage(usageRows, accounts, gid) {
-  const ids = new Set(accounts.filter(a => groupOf(a) === gid).map(a => String(a.ig_user_id)));
+  const ids = new Set(accounts.filter(a => groupOf(a) === gid).map(a => String(a.ig_user_id || a.open_id)));
   ids.add(gid);
   const latest = latestBy(usageRows, 'account_id');
   const t = { dm: 0, ai: 0 };

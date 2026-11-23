@@ -214,7 +214,7 @@ export default function RuleEditor({ initial, media, mediaError, username, plan,
   )
 }
 
-function Section({ n, title, right, children }: { n: number; title: string; right?: ReactNode; children: ReactNode }) {
+export function Section({ n, title, right, children }: { n: number; title: string; right?: ReactNode; children: ReactNode }) {
   return (
     <section className="card stack">
       <div className="row between" style={{ flexWrap: 'nowrap' }}>
@@ -229,7 +229,7 @@ function Section({ n, title, right, children }: { n: number; title: string; righ
   )
 }
 
-function KeywordInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+export function KeywordInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [draft, setDraft] = useState('')
   const list = value.split(',').map((s) => s.trim()).filter(Boolean)
   const add = (raw: string) => {

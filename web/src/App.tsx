@@ -200,7 +200,7 @@ function UserApp() {
         )}
         {page === 'dashboard' && <Dashboard me={me} go={go} />}
         {page === 'automations' && <Automations account={account} billing={billing} />}
-        {page === 'tiktok' && <TikTokPage tiktok={me.tiktok} accounts={accounts} />}
+        {page === 'tiktok' && <TikTokPage tiktok={me.tiktok} accounts={accounts} billing={billing} />}
         {page === 'activity' && <Activity account={account} />}
         {page === 'analytics' && <AnalyticsPage account={account} billing={billing} go={go} />}
         {page === 'billing' && <BillingPage billing={billing} reload={loadMe} />}

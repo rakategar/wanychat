@@ -1,6 +1,6 @@
 # Wanychat
 
-Auto-DM and auto-reply for Instagram comments, plus TikTok comment management, ManyChat-style. Users sign up with email + password or Google, connect Instagram and/or TikTok through the official permission pages, write a keyword, and every commenter automatically gets a DM with a button, then the link, a follow-up, and AI replies.
+Auto-DM and auto-reply for Instagram comments, plus TikTok comment automation (keyword reply, AI reply, spam hiding), ManyChat-style. Users sign up with email + password or Google, connect Instagram and/or TikTok through the official permission pages, write a keyword, and every commenter automatically gets a DM with a button, then the link, a follow-up, and AI replies.
 
 ```
 Browser/PWA ─▶ Vercel (web/, Vite+React)          https://wanychat.remot.in
@@ -28,7 +28,13 @@ The landing page makes no API calls. Every call is one n8n execution, so only pa
 - **1 Wanychat account (email or Google) → many social accounts.** `wany_users.group_id` is the subscription group key (billing, quota, AI credits); every linked IG account has `wany_accounts.owner_id = group_id` and every TikTok account `wany_tt_accounts.owner_id = group_id`. Engine/Scheduler/Billing still resolve groups with `groupOf()` (`owner_id || ig_user_id`).
 - Sessions (`wany_session` cookie, 30 days, SHA-256 in `wany_sessions`) always carry `user_id`; sessions from the old Instagram login (no `user_id`) are rejected, so old users must register once.
 - **Old Instagram users**: when a signed-in user links an IG account that already exists from the old login, the old group is claimed (rules, logs, plan and credits come along without row migration). If the user's group already has accounts or a paid plan, the old group's accounts are moved in (refused if the old group still has a paid plan/credits: superadmin merges manually). Linking an IG/TikTok account owned by another Wanychat user is refused. Unlinked accounts get `owner_id = "unlinked"` and an empty token.
-- Plan `accounts` counts Instagram + TikTok together.
+- Plan `accounts` counts Instagram + TikTok together. Instagram accounts take the slots first, then TikTok oldest first (`ttActiveInGroup`). AI quota and AI credits are shared across both channels (`groupUsage` includes TikTok `open_id` usage rows).
+- **TikTok automation** (`Wanychat · TikTok Automasi`, `code/tt_auto.js`): TikTok sends no comment webhooks, so a Schedule trigger polls every 5 min. Each account is checked every 30 min on Gratis and every 5 min on paid plans (`tt_poll_free_min` / `tt_poll_paid_min` settings). Comments are read only for videos whose comment count changed (the latest 10, plus videos a rule names). Only comments newer than the first poll get processed. Rules are `wany_rules` rows with `channel = 'tiktok'`, `account_id = open_id`:
+  - hide rules run first;
+  - then a keyword match gets a public reply (max 150 chars);
+  - then an AI reply (DeepSeek, at most 10 per round).
+  - Duplicates are prevented twice: by workflow static data and by `tt_reply`/`tt_hide`/`tt_ai_reply` log rows.
+  - Unlinking a TikTok account deletes its rules and logs, so a later owner inherits nothing.
 - New users go through onboarding (`#/onboarding`: first channel or explore → for whom → heard from → plan, free allowed) before the panel.
 - Auth security: scrypt passwords, generic login errors, per-email (8) / per-IP (40) / global (600) attempts per 15 min, 6-digit OTP (10 min, 5 tries, 60 s resend throttle), password reset revokes all sessions, Origin check on every POST.
 
@@ -41,7 +47,7 @@ The landing page makes no API calls. Every call is one n8n execution, so only pa
 | `n8n/tables.py` | Creates missing `wany_*` Data Tables / columns for a target (`python3 tables.py cloud`), schema in `cloud_setup.COLUMNS` |
 | `n8n/settings_seed.py` | Writes TikTok app keys (from `~/.config/wanychat/tiktok.json`), `mail_secret`, sender settings into `wany_settings` |
 | `n8n/link_smtp.py` | Records the SMTP credential ("Wanychat SMTP") so `build.py` attaches it to every email node |
-| `n8n/dev/` | Local dev tools: `mailcatcher.mjs` (fake SMTP → `.eml`), `test_auth.py` (account/session audit against local n8n), `test_claim.mjs` (IG claim + TikTok link unit tests) |
+| `n8n/dev/` | Local dev tools: `mailcatcher.mjs` (fake SMTP → `.eml`), `test_auth.py` (account/session audit against local n8n), `test_claim.mjs` (IG claim + TikTok link unit tests), `test_tt_auto.mjs` (TikTok automation unit tests with a fake TikTok API), `test_tt_api.py` (TikTok rules/logs/isolation against local n8n) |
 | `n8n/sa_setup.py` | Sets the superadmin username + password (scrypt hash only) and default billing settings |
 | `n8n/targets.json` | Data Table IDs, credentials, and workflows per target (`local`, `cloud`). No secrets. |
 | `n8n/mcp.py` | Small MCP client. Tokens are read from `~/.config/wanychat/*.json` / `~/.claude.json`, never from the repo |
@@ -77,7 +83,7 @@ DeepSeek credential: create it in the n8n cloud UI (Credentials → DeepSeek), t
 ## Email (SMTP), Google, TikTok setup
 1. **SMTP**: n8n → Credentials → SMTP, name `Wanychat SMTP`: host `smtp.hostinger.com`, port 465, SSL on, user `contact@remot.in`, mailbox password. Then `python3 link_smtp.py && TARGET=cloud python3 build.py && python3 deploy_cloud.py`. Test from superadmin → Teknis → Email. DNS for remot.in already has SPF, Hostinger DKIM and DMARC. Hostinger Starter has a low daily send limit: move promo mail to a bulk provider (Brevo etc.) by swapping the credential.
 2. **Google login**: Google Cloud Console → OAuth consent screen (External) → Credentials → OAuth client ID (Web). Redirect URIs `https://wanychat.remot.in/webhook/wany-google-cb` (+ `http://localhost:5180/webhook/wany-google-cb` for dev). Fill Client ID/secret in superadmin → Teknis → Login Google.
-3. **TikTok** (TikTok API for Business app 7711213753433325620, Accounts API): account-holder redirect URL `https://wanychat.remot.in/webhook/wany-tiktok-login`. App ID/secret live in `wany_settings` (`settings_seed.py`), never in the repo. TikTok comment automation is not built yet: see `dokumen/tiktok-automasi-tahap-2.md`.
+3. **TikTok** (TikTok API for Business app 7711213753433325620, Accounts API): account-holder redirect URL `https://wanychat.remot.in/webhook/wany-tiktok-login`. App ID/secret (and the Google client from `~/.config/wanychat/google.json`) live in `wany_settings` (`settings_seed.py`), never in the repo. Comment automation runs by polling (see above). If TikTok ever offers a comment webhook for the Accounts API, it can replace the poll in `tt_auto.js`.
 
 ## Meta setup (app 4227152544202744 → Instagram → API setup with Instagram login)
 1. **Business login settings → OAuth redirect URI**: `https://wanychat.remot.in/webhook/wany-oauth`

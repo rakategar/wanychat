@@ -2,7 +2,7 @@ import type { Plan } from './plans'
 
 // Client for the "Wanychat · Admin API" webhook in n8n (proxied as /api by Vite locally, by vercel.json in production)
 
-export type Channel = 'comment' | 'dm'
+export type Channel = 'comment' | 'dm' | 'tiktok'
 export type MatchMode = 'contains' | 'exact' | 'any'
 
 export interface Rule {
@@ -22,6 +22,7 @@ export interface Rule {
   followup_message: string
   ai_fallback: boolean
   ai_context: string
+  hide_comment?: boolean // rule TikTok: sembunyikan komentar yang cocok
   createdAt?: string
   updatedAt?: string
 }
@@ -247,6 +248,26 @@ export async function switchAccount(a: Pick<SocialAccount, 'type' | 'id'>) {
   window.location.hash = a.type === 'tiktok' ? '#/tiktok' : '#/dashboard'
   window.location.reload()
 }
+
+// Rule TikTok: balas komentar publik (maks 150 karakter) atau sembunyikan komentar; tanpa DM/follow-up
+export const emptyTtRule = (): Rule => ({
+  name: '',
+  active: true,
+  channel: 'tiktok',
+  post_ids: '*',
+  keywords: '',
+  match_mode: 'contains',
+  comment_replies: 'Makasih udah komen {username}! Info lengkap di bio ya 🙌\nSiap kak {username}, cek link di bio ✨',
+  dm_message: '',
+  dm_button_title: '',
+  dm_content: '',
+  followup_enabled: false,
+  followup_delay_min: 60,
+  followup_message: '',
+  ai_fallback: false,
+  ai_context: '',
+  hide_comment: false,
+})
 
 export const emptyRule = (): Rule => ({
   name: '',

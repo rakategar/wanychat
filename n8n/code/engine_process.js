@@ -36,6 +36,8 @@ const groups = {}; // owner grup -> { dm, ai } pemakaian bersama bulan ini + { u
 const accounts = {};
 for (const it of $('Baca Akun').all()) if (it.json.ig_user_id) accounts[String(it.json.ig_user_id)] = it.json;
 const accountList = Object.values(accounts);
+// Akun TikTok grup ikut dihitung di kuota AI bersama (balasan AI TikTok tercatat di wany_usage dengan account_id = open_id)
+const ttList = $('Baca Akun TikTok').all().map(i => i.json).filter(a => a && a.open_id);
 const everyRule = $('Baca Rules').all().map(i => i.json).filter(r => r.id);
 const G = 'https://graph.instagram.com/' + (settings.graph_version || 'v23.0');
 const out = [];
@@ -161,7 +163,7 @@ for (const entry of body.entry || []) {
   plan = effectivePlan(bill, plans);
   if (!activeInGroup(account, accountList, plan)) continue; // melebihi jumlah akun paket (mis. setelah turun paket)
   if (!groups[gid]) {
-    const t = groupUsage(usageRows, accountList, gid);
+    const t = groupUsage(usageRows, accountList.concat(ttList), gid);
     const c = creditBy[gid] || {};
     groups[gid] = { dm: t.dm, ai: t.ai, granted: Number(c.granted) || 0, used: Number(c.used) || 0, changed: false };
   }

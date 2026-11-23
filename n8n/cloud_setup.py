@@ -24,7 +24,7 @@ COLUMNS = {
               'post_ids': 'string', 'keywords': 'string', 'match_mode': 'string', 'comment_replies': 'string',
               'dm_message': 'string', 'dm_button_title': 'string', 'dm_content': 'string',
               'followup_enabled': 'boolean', 'followup_delay_min': 'number', 'followup_message': 'string',
-              'ai_fallback': 'boolean', 'ai_context': 'string'},
+              'ai_fallback': 'boolean', 'ai_context': 'string', 'hide_comment': 'boolean'},
     'contacts': {'account_id': 'string', 'ig_user_id': 'string', 'username': 'string', 'last_user_msg_at': 'date'},
     'events': {'account_id': 'string', 'type': 'string', 'status': 'string', 'rule_id': 'string',
                'rule_name': 'string', 'ig_user_id': 'string', 'username': 'string', 'ref_id': 'string',

@@ -129,6 +129,11 @@ export const EVENT_META: Record<string, { label: string; color: string; icon: st
   followup: { label: 'Follow-up', color: 'orange', icon: '⏰' },
   quota: { label: 'Kuota habis', color: 'orange', icon: '⛔' },
   security: { label: 'Keamanan', color: 'red', icon: '🛡️' },
+  tt_comment_in: { label: 'Komentar TikTok', color: 'blue', icon: '💬' },
+  tt_reply: { label: 'Balas komentar', color: 'purple', icon: '↩️' },
+  tt_ai_reply: { label: 'Balasan AI', color: 'green', icon: '✨' },
+  tt_hide: { label: 'Disembunyikan', color: 'orange', icon: '🙈' },
+  tt_error: { label: 'Koneksi TikTok', color: 'red', icon: '⚠️' },
 }
 
 export function Brand({ size = 20 }: { size?: number }) {
