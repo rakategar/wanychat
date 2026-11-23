@@ -34,7 +34,21 @@ COLUMNS = {
     'accounts': {'ig_user_id': 'string', 'username': 'string', 'name': 'string', 'avatar': 'string',
                  'access_token': 'string', 'token_expires_at': 'date', 'token_refresh_error': 'string',
                  'ai_enabled': 'boolean', 'ai_persona': 'string', 'connected_at': 'date', 'owner_id': 'string'},
-    'sessions': {'token': 'string', 'ig_user_id': 'string', 'expires_at': 'date'},
+    # sesi panel: user_id = akun Wanychat (email/Google); ig_user_id / tt_open_id = akun sosial yang sedang dibuka
+    'sessions': {'token': 'string', 'ig_user_id': 'string', 'expires_at': 'date', 'user_id': 'string',
+                 'tt_open_id': 'string'},
+    # akun Wanychat: identitas login, terpisah dari akun sosial. group_id = kunci billing/kuota/kredit
+    'users': {'uid': 'string', 'email': 'string', 'email_verified': 'boolean', 'password_hash': 'string',
+              'google_sub': 'string', 'name': 'string', 'avatar': 'string', 'group_id': 'string',
+              'onboarding': 'string', 'marketing_opt_in': 'boolean', 'last_login_at': 'date'},
+    # kode OTP email (hanya hash): verifikasi email & reset password
+    'otp': {'email': 'string', 'purpose': 'string', 'code_hash': 'string', 'expires_at': 'date', 'tries': 'number',
+            'used': 'boolean', 'ip': 'string'},
+    # akun TikTok (Accounts API); owner_id = group_id pemilik
+    'tt_accounts': {'open_id': 'string', 'username': 'string', 'display_name': 'string', 'avatar': 'string',
+                    'access_token': 'string', 'token_expires_at': 'date', 'refresh_token': 'string',
+                    'refresh_expires_at': 'date', 'token_refresh_error': 'string', 'owner_id': 'string',
+                    'connected_at': 'date'},
     # langganan & superadmin
     'billing': {'account_id': 'string', 'plan': 'string', 'status': 'string', 'period_end': 'date',
                 'subscription_id': 'string', 'subscription_name': 'string', 'cancel_at_period_end': 'boolean',

@@ -1,35 +1,42 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
-import { api, ApiError, switchAccount, type Account, type Billing, type Member } from './api'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { api, ApiError, switchAccount, type Me, type SocialAccount, type User } from './api'
 import { Brand, Spinner, useToast } from './components/ui'
+import { CHANNEL } from './components/Connect'
 import Landing from './pages/Landing'
+import AuthPage, { type AuthMode } from './pages/Auth'
+import Onboarding from './pages/Onboarding'
 import Dashboard from './pages/Dashboard'
 import Automations from './pages/Automations'
 import Activity from './pages/Activity'
 import BillingPage from './pages/Billing'
 import SettingsPage from './pages/Settings'
 import AnalyticsPage from './pages/Analytics'
+import TikTokPage from './pages/TikTok'
 
 // Dasbor superadmin dimuat terpisah: tidak ikut terunduh oleh pengguna biasa
 const AdminApp = lazy(() => import('./admin/AdminApp'))
 
-export type Page = 'dashboard' | 'automations' | 'activity' | 'analytics' | 'billing' | 'settings'
+export type Page = 'dashboard' | 'automations' | 'tiktok' | 'activity' | 'analytics' | 'billing' | 'settings'
 
 const NAV: { id: Page; label: string; icon: string }[] = [
   { id: 'dashboard', label: 'Dasbor', icon: '🏠' },
   { id: 'automations', label: 'Automasi', icon: '⚡' },
+  { id: 'tiktok', label: 'TikTok', icon: '🎵' },
   { id: 'activity', label: 'Aktivitas', icon: '📜' },
   { id: 'analytics', label: 'Analitik', icon: '📊' },
   { id: 'billing', label: 'Langganan', icon: '💳' },
   { id: 'settings', label: 'Akun', icon: '👤' },
 ]
+const AUTH_MODES: AuthMode[] = ['login', 'register', 'verify', 'forgot', 'reset']
 
-// Hash route: "" / "#/" = landing (tanpa panggilan API), "#/dashboard" dst = panel, "#/login?error=..." = landing + pesan,
-// "#/admin" = dasbor superadmin
+// Hash route: "" / "#/" = landing (tanpa panggilan API), "#/login" dst = halaman akun, "#/onboarding" = user baru,
+// "#/dashboard" dst = panel, "#/admin" = dasbor superadmin
 const readHash = () => {
   const [path, query = ''] = window.location.hash.replace(/^#\/?/, '').split('?')
   return { path, params: new URLSearchParams(query) }
 }
 const isPanel = (path: string) => NAV.some((n) => n.id === path)
+const needsSession = (path: string) => isPanel(path) || path === 'onboarding'
 const pageFromHash = (): Page => {
   const { path } = readHash()
   return isPanel(path) ? (path as Page) : 'dashboard'
@@ -55,41 +62,49 @@ export default function App() {
 
 function UserApp() {
   const toast = useToast()
-  const [account, setAccount] = useState<Account | null>(null)
-  const [billing, setBilling] = useState<Billing | null>(null)
-  const [announcement, setAnnouncement] = useState('')
-  const [auth, setAuth] = useState<'checking' | 'out' | 'in'>(() => (isPanel(readHash().path) ? 'checking' : 'out'))
-  const [page, setPage] = useState<Page>(pageFromHash)
-  const [loginError, setLoginError] = useState(() => readHash().params.get('error') || '')
+  const [me, setMeState] = useState<Me | null>(null)
+  // Salinan sinkron untuk handler hashchange (bisa jalan sebelum React merender state baru)
+  const meRef = useRef<Me | null>(null)
+  const setMe = useCallback((m: Me | null) => { meRef.current = m; setMeState(m) }, [])
+  const [route, setRoute] = useState(readHash)
+  const [auth, setAuth] = useState<'checking' | 'out' | 'in'>(() => (needsSession(readHash().path) ? 'checking' : 'out'))
 
-  const loadAccount = useCallback(async () => {
-    const r = await api<{ account: Account; billing: Billing; announcement: string }>('auth.me')
-    setAccount(r.account)
-    setBilling(r.billing)
-    setAnnouncement(r.announcement || '')
-    return r.account
-  }, [])
+  const loadMe = useCallback(async () => {
+    const r = await api<Me>('auth.me')
+    setMe(r)
+    return r
+  }, [setMe])
+
+  // Pesan sekali jalan dari redirect OAuth / pembayaran (?linked=, ?connected=, ?error=, ?warn=), lalu dibersihkan dari URL
+  const flash = useCallback(() => {
+    const { path, params } = readHash()
+    if (path === 'onboarding') return
+    if (params.get('warn')) toast(params.get('warn')!, 'error')
+    if (params.get('error') && isPanel(path)) toast(params.get('error')!, 'error')
+    if (params.get('linked') === 'instagram') toast(params.get('claimed') === '1' ? 'Instagram terhubung. Automasi & data lamanya ikut masuk 🎉' : 'Instagram terhubung 🎉')
+    if (params.get('connected') === '1') toast('TikTok terhubung 🎉')
+    if (isPanel(path) && params.size && !params.has('paid') && !params.has('plan')) window.history.replaceState(null, '', '#/' + path)
+  }, [toast])
 
   const checkAuth = useCallback(() => {
     setAuth('checking')
-    const warn = readHash().params.get('warn')
-    loadAccount()
-      .then(() => {
+    loadMe()
+      .then((r) => {
         hint.set(true)
         setAuth('in')
-        if (warn) toast(warn, 'error')
-        const { params } = readHash()
-        if (params.get('linked') === '1') toast('Akun Instagram ditambahkan ke langganan kamu 🎉')
-        if (params.size && !params.has('paid')) window.history.replaceState(null, '', '#/' + pageFromHash())
+        const { path } = readHash()
+        // User yang belum menyelesaikan onboarding selalu diarahkan ke sana dulu
+        if (!r.user.onboarding.done && path !== 'onboarding') window.location.hash = '/onboarding'
+        else flash()
       })
       .catch((e) => {
         hint.set(false)
+        setMe(null)
         setAuth('out')
-        window.history.replaceState(null, '', '#/')
-        if (e instanceof ApiError && e.status === 401 && e.message !== 'Silakan masuk dengan Instagram') setLoginError(e.message)
-        else if (!(e instanceof ApiError && e.status === 401)) toast(e.message, 'error')
+        if (e instanceof ApiError && e.status === 401) window.location.hash = '/login'
+        else { toast(e.message, 'error'); window.history.replaceState(null, '', '#/') }
       })
-  }, [loadAccount, toast])
+  }, [loadMe, flash, toast, setMe])
 
   useEffect(() => {
     if (auth === 'checking') checkAuth()
@@ -98,31 +113,44 @@ function UserApp() {
 
   useEffect(() => {
     const onHash = () => {
-      const { path, params } = readHash()
-      if (isPanel(path)) {
-        setPage(path as Page)
-        if (!account) checkAuth()
-      } else if (path === 'login' || path === '') {
-        setLoginError(params.get('error') || '')
-      }
+      const r = readHash()
+      const cur = meRef.current
+      setRoute(r)
+      if (needsSession(r.path) && !cur) checkAuth()
+      else if (isPanel(r.path) && cur && !cur.user.onboarding.done) window.location.hash = '/onboarding'
+      else if (isPanel(r.path)) flash()
     }
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
-  }, [account, checkAuth])
+  }, [checkAuth, flash])
 
-  const go = (p: Page) => { window.location.hash = '/' + p; setPage(p); window.scrollTo(0, 0) }
+  const go = (p: Page) => { window.location.hash = '/' + p; window.scrollTo(0, 0) }
   const logout = async () => {
     try { await api('auth.logout') } catch { /* sesi sudah habis */ }
     hint.set(false)
-    setAccount(null)
+    setMe(null)
     setAuth('out')
-    window.history.replaceState(null, '', '#/')
+    window.location.hash = '/'
   }
+  const signedIn = (next: 'onboarding' | 'dashboard') => {
+    setMe(null)
+    setAuth('checking')
+    window.location.hash = '/' + next
+    checkAuth()
+  }
+  const setUser = (u: User) => { if (meRef.current) setMe({ ...meRef.current, user: u }) }
 
+  const { path, params } = route
+  if (AUTH_MODES.includes(path as AuthMode)) return <AuthPage mode={path as AuthMode} error={params.get('error') || ''} onSignedIn={signedIn} />
   if (auth === 'checking') return <div className="login"><Spinner /></div>
-  if (auth === 'out' || !account || !isPanel(readHash().path)) return <Landing error={loginError} signedIn={!!account || hint.get()} />
+  if (auth === 'out' || !me || !needsSession(path)) return <Landing signedIn={!!me || hint.get()} />
+  if (path === 'onboarding') return <Onboarding key={params.get('step') || ''} me={me} onUser={setUser} onDone={(to) => { loadMe().catch(() => {}); window.location.hash = to }} />
 
+  const { user, account, billing, accounts } = me
+  const page = pageFromHash()
   const planName = billing?.plan.name || 'Gratis'
+  const current = account ? { type: 'instagram' as const, username: account.username, avatar: account.avatar }
+    : me.tiktok ? { type: 'tiktok' as const, username: me.tiktok.username, avatar: me.tiktok.avatar } : null
 
   return (
     <div className="shell">
@@ -140,14 +168,14 @@ function UserApp() {
             Paket <b>{planName}</b>
             {billing && billing.plan.id === 'free' && <span className="badge dark">Upgrade</span>}
           </button>
+          <AccountSwitcher accounts={accounts} go={go} />
           <div className="account-chip">
-            {account.avatar ? <img src={account.avatar} alt="" /> : <span className="avatar" />}
+            {user.avatar ? <img src={user.avatar} alt="" referrerPolicy="no-referrer" /> : <span className="avatar">{(user.name || user.email).slice(0, 1).toUpperCase()}</span>}
             <div style={{ minWidth: 0 }}>
-              <div className="ellipsis" style={{ fontWeight: 700 }}>@{account.username}</div>
-              <div className="small muted">terhubung</div>
+              <div className="ellipsis" style={{ fontWeight: 700 }}>{user.name || user.email}</div>
+              <div className="small muted ellipsis">{user.email}</div>
             </div>
           </div>
-          {billing && (billing.accounts_used > 1 || billing.accounts_limit > 1) && <AccountSwitcher current={account.ig_user_id} go={go} />}
           <button className="btn sm ghost" onClick={logout}>Keluar</button>
         </div>
       </aside>
@@ -157,25 +185,26 @@ function UserApp() {
         <div className="row" style={{ gap: 8, flexWrap: 'nowrap' }}>
           <button className="badge yellow" onClick={() => go('billing')}>{planName}</button>
           <button className="avatar-btn" onClick={() => go('settings')} aria-label="Akun">
-            {account.avatar ? <img className="avatar" src={account.avatar} alt="" /> : <span className="avatar" />}
+            {current?.avatar ? <img className="avatar" src={current.avatar} alt="" /> : <span className="avatar">{(user.name || user.email).slice(0, 1).toUpperCase()}</span>}
           </button>
         </div>
       </header>
 
       <main className="main">
-        {announcement && <div className="callout yellow announce" role="status">📣 {announcement}</div>}
+        {me.announcement && <div className="callout yellow announce" role="status">📣 {me.announcement}</div>}
         {billing?.group_inactive && (
           <div className="callout pink announce" role="status">
-            Akun ini tidak aktif: paket {billing.plan.name} hanya untuk {billing.accounts_limit} akun Instagram. Automasi akun ini berhenti sampai paket dinaikkan
+            Akun ini tidak aktif: paket {billing.plan.name} hanya untuk {billing.accounts_limit} akun sosial. Automasi akun ini berhenti sampai paket dinaikkan
             atau akun lain dilepas. <a href="#/billing">Lihat paket</a>
           </div>
         )}
-        {page === 'dashboard' && <Dashboard account={account} billing={billing} go={go} />}
+        {page === 'dashboard' && <Dashboard me={me} go={go} />}
         {page === 'automations' && <Automations account={account} billing={billing} />}
-        {page === 'activity' && <Activity />}
-        {page === 'analytics' && <AnalyticsPage billing={billing} go={go} />}
-        {page === 'billing' && <BillingPage billing={billing} reload={loadAccount} />}
-        {page === 'settings' && <SettingsPage account={account} billing={billing} reload={loadAccount} logout={logout} />}
+        {page === 'tiktok' && <TikTokPage tiktok={me.tiktok} accounts={accounts} />}
+        {page === 'activity' && <Activity account={account} />}
+        {page === 'analytics' && <AnalyticsPage account={account} billing={billing} go={go} />}
+        {page === 'billing' && <BillingPage billing={billing} reload={loadMe} />}
+        {page === 'settings' && <SettingsPage me={me} reload={loadMe} logout={logout} />}
       </main>
 
       <nav className="tabbar">
@@ -189,24 +218,26 @@ function UserApp() {
   )
 }
 
-function AccountSwitcher({ current, go }: { current: string; go: (p: Page) => void }) {
+// Semua akun sosial milik user (Instagram + TikTok): klik untuk membuka dasbor akun itu
+function AccountSwitcher({ accounts, go }: { accounts: SocialAccount[]; go: (p: Page) => void }) {
   const toast = useToast()
-  const [members, setMembers] = useState<Member[] | null>(null)
   const [busy, setBusy] = useState('')
-  useEffect(() => { api<{ accounts: Member[] }>('accounts.list').then((r) => setMembers(r.accounts)).catch(() => setMembers([])) }, [current])
-  if (!members) return null
-  const others = members.filter((m) => m.ig_user_id !== current)
   return (
     <div className="switcher">
-      {others.map((m) => (
-        <button key={m.ig_user_id} className="switcher-item" disabled={!!busy} title="Buka dasbor akun ini"
-          onClick={async () => { setBusy(m.ig_user_id); try { await switchAccount(m.ig_user_id) } catch (e) { toast((e as Error).message, 'error'); setBusy('') } }}>
-          {m.avatar ? <img src={m.avatar} alt="" /> : <span className="avatar" />}
-          <span className="ellipsis">@{m.username}</span>
-          {busy === m.ig_user_id ? <Spinner /> : <span aria-hidden>⇄</span>}
+      {accounts.map((a) => (
+        <button key={a.type + a.id} className={'switcher-item' + (a.current ? ' current' : '')} disabled={!!busy}
+          title={a.current ? 'Sedang dibuka' : 'Buka akun ini'}
+          onClick={async () => {
+            if (a.current) { go(a.type === 'tiktok' ? 'tiktok' : 'dashboard'); return }
+            setBusy(a.id)
+            try { await switchAccount(a) } catch (e) { toast((e as Error).message, 'error'); setBusy('') }
+          }}>
+          {a.avatar ? <img src={a.avatar} alt="" /> : <span className="avatar" />}
+          <span className="ellipsis">@{a.username || a.id}</span>
+          {busy === a.id ? <Spinner /> : <span aria-hidden title={CHANNEL[a.type].label}>{CHANNEL[a.type].icon}</span>}
         </button>
       ))}
-      <button className="switcher-item add" onClick={() => go('settings')}>＋ Kelola akun</button>
+      <button className="switcher-item add" onClick={() => go('settings')}>＋ {accounts.length ? 'Kelola akun' : 'Hubungkan akun'}</button>
     </div>
   )
 }

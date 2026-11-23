@@ -1,12 +1,56 @@
 import { useEffect, useMemo, useState } from 'react'
-import { api, type Account, type Billing, type EventRow, type Profile, type Rule } from '../api'
+import { api, type Account, type Billing, type EventRow, type Me, type Profile, type Rule } from '../api'
+import { CHANNEL, ConnectButtons } from '../components/Connect'
 import type { Page } from '../App'
 import { EVENT_META, Spinner, timeAgo } from '../components/ui'
 import { Meter } from './Billing'
 
 type Sub = { subscribed_fields: string[] }
 
-export default function Dashboard({ account, billing, go }: { account: Account; billing: Billing | null; go: (p: Page) => void }) {
+export default function Dashboard({ me, go }: { me: Me; go: (p: Page) => void }) {
+  if (me.account) return <IgDashboard key={me.account.ig_user_id} account={me.account} billing={me.billing} go={go} />
+  return <StartDashboard me={me} go={go} />
+}
+
+// Belum ada akun Instagram: ajak menghubungkan akun (TikTok-only diarahkan ke halaman TikTok)
+function StartDashboard({ me, go }: { me: Me; go: (p: Page) => void }) {
+  const { user, billing, accounts } = me
+  return (
+    <>
+      <div className="page-head">
+        <div>
+          <h1>Halo, {(user.name || user.email).split(' ')[0]} 👋</h1>
+          <p>{accounts.length ? 'Akun sosialmu sudah terhubung. Lanjutkan dari sini.' : 'Hubungkan akun sosial pertamamu untuk mulai membalas otomatis.'}</p>
+        </div>
+      </div>
+      <div className="grid two">
+        <section className="card stack tint-yellow">
+          <h2 className="card-title" style={{ margin: 0 }}>Hubungkan akun</h2>
+          <p style={{ margin: 0 }}>Instagram: komentar jadi DM otomatis + tombol + AI. TikTok: kelola & balas komentar video dari satu tempat.
+            Kamu masuk lewat halaman izin resmi masing-masing; Wanychat tidak pernah melihat password-nya.</p>
+          <ConnectButtons />
+          <p className="hint" style={{ margin: 0 }}>Instagram harus akun Profesional (Kreator/Bisnis). Paket {billing.plan.name}: {billing.accounts_limit} akun sosial.</p>
+        </section>
+        <section className="card stack">
+          <h2 className="card-title" style={{ margin: 0 }}>Akun terhubung</h2>
+          {accounts.length === 0 ? <p className="muted" style={{ margin: 0 }}>Belum ada.</p> : accounts.map((a) => (
+            <div key={a.type + a.id} className="member-row">
+              {a.avatar ? <img className="avatar" src={a.avatar} alt="" /> : <span className="avatar" />}
+              <div><div className="ellipsis" style={{ fontWeight: 700 }}>@{a.username || a.id}</div><div className="small muted">{CHANNEL[a.type].icon} {CHANNEL[a.type].label}</div></div>
+              <button className="btn sm" onClick={() => go(a.type === 'tiktok' ? 'tiktok' : 'dashboard')}>Buka</button>
+            </div>
+          ))}
+          <div className="row between">
+            <span className="small muted">Paket <b>{billing.plan.name}</b></span>
+            <button className="btn sm" onClick={() => go('billing')}>{billing.plan.id === 'free' ? 'Lihat paket' : 'Kelola langganan'}</button>
+          </div>
+        </section>
+      </div>
+    </>
+  )
+}
+
+function IgDashboard({ account, billing, go }: { account: Account; billing: Billing | null; go: (p: Page) => void }) {
   const [events, setEvents] = useState<EventRow[] | null>(null)
   const [rules, setRules] = useState<Rule[]>([])
   const [profile, setProfile] = useState<Profile | null>(null)

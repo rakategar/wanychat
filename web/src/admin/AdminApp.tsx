@@ -172,6 +172,8 @@ function OverviewTab({ guard, go }: { guard: Guard; go: (t: Tab) => void }) {
   const checks: [boolean, string, string][] = [
     [h.engine_enabled, 'Engine auto-reply', h.engine_enabled ? 'Berjalan' : 'Mode perawatan: semua balasan dihentikan'],
     [h.meta_app, 'Aplikasi Meta', h.meta_app ? 'App ID & App Secret terisi' : 'Isi di tab Teknis'],
+    [h.google, 'Login Google', h.google ? 'Client ID & secret terisi' : 'Belum diisi: tombol "Lanjut dengan Google" nonaktif'],
+    [h.tiktok, 'Aplikasi TikTok', h.tiktok ? 'App ID & secret terisi' : 'Belum diisi: hubungkan TikTok nonaktif'],
     h.gateway === 'midtrans'
       ? [!!h.midtrans, 'Pembayaran: Midtrans', h.midtrans ? `Aktif (${h.midtrans})` : 'Server key untuk mode ini belum diisi: pembayaran nonaktif']
       : [!!h.doku, 'Pembayaran: DOKU', h.doku ? `Aktif (${h.doku})` : 'Client ID / secret key belum diisi: pembayaran nonaktif'],
@@ -296,17 +298,17 @@ function UsersTab({ guard }: { guard: Guard }) {
   const [edit, setEdit] = useState<UserRow | null>(null)
   const shown = useMemo(() => (data?.users || []).filter((u) =>
     (planFilter === 'all' || (planFilter === 'suspended' ? u.suspended : u.plan === planFilter)) &&
-    (!q || (u.username + ' ' + u.name + ' ' + u.ig_user_id).toLowerCase().includes(q.toLowerCase()))), [data, q, planFilter])
+    (!q || [u.email, u.name, u.group_id, ...u.instagram.map((a) => a.username), ...u.tiktok.map((a) => a.username)].join(' ').toLowerCase().includes(q.toLowerCase()))), [data, q, planFilter])
 
   if (!data) return <Spinner />
   return (
     <>
       <div className="page-head">
-        <div><h1>Pengguna</h1><p>{data.users.length} akun Instagram terdaftar.</p></div>
+        <div><h1>Pengguna</h1><p>{data.users.filter((u) => !u.legacy).length} akun Wanychat · {data.users.filter((u) => u.legacy).length} akun lama (login Instagram, belum diklaim).</p></div>
         <button className="btn sm" onClick={load}>↻ Muat ulang</button>
       </div>
       <div className="row" style={{ marginBottom: 16 }}>
-        <input className="input" style={{ maxWidth: 320 }} placeholder="Cari username / nama / ID…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <input className="input" style={{ maxWidth: 320 }} placeholder="Cari email / nama / @username…" value={q} onChange={(e) => setQ(e.target.value)} />
         <select className="input" style={{ maxWidth: 200 }} value={planFilter} onChange={(e) => setPlanFilter(e.target.value)}>
           <option value="all">Semua paket</option>
           {data.plans.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -319,8 +321,8 @@ function UsersTab({ guard }: { guard: Guard }) {
             <div className="row" style={{ flexWrap: 'nowrap' }}>
               {u.avatar ? <img className="avatar" src={u.avatar} alt="" style={{ width: 44, height: 44 }} /> : <span className="avatar" style={{ width: 44, height: 44 }} />}
               <div style={{ minWidth: 0, flex: 1 }}>
-                <div className="ellipsis"><b>@{u.username}</b></div>
-                <div className="small muted ellipsis">{u.name || u.ig_user_id}</div>
+                <div className="ellipsis"><b>{u.email || (u.username ? '@' + u.username : u.group_id)}</b></div>
+                <div className="small muted ellipsis">{u.legacy ? 'akun lama · belum punya akun Wanychat' : (u.name || '-') + (u.google ? ' · Google' : '') + (u.email_verified ? '' : ' · email belum diverifikasi')}</div>
               </div>
               <span className={'badge ' + (u.suspended ? 'red' : u.plan === 'free' ? '' : 'yellow')}>{u.suspended ? 'nonaktif' : data.plans.find((p) => p.id === u.plan)?.name || u.plan}</span>
             </div>
@@ -329,10 +331,12 @@ function UsersTab({ guard }: { guard: Guard }) {
               <span>DM bulan ini</span><b>{fmt(u.usage.dm)} / {fmt(u.limits.dm)}</b>
               <span>AI bulan ini</span><b>{fmt(u.usage.ai)} / {fmt(u.limits.ai)}</b>
               <span>Kredit AI</span><b>{fmt(u.credits)}{u.credits_used ? <span className="muted"> ({fmt(u.credits_used)} terpakai)</span> : null}</b>
-              {u.owner_id ? <><span>Grup</span><b>akun tambahan @{u.owner_username}{!u.active ? ' · nonaktif' : ''}</b></> : u.group_size > 1 ? <><span>Grup</span><b>pemilik, {u.group_size} akun</b></> : null}
+              <span>Instagram</span><b>{u.instagram.length ? u.instagram.map((a) => '@' + a.username + (a.active ? '' : ' (nonaktif)')).join(', ') : '-'}</b>
+              <span>TikTok</span><b>{u.tiktok.length ? u.tiktok.map((a) => '@' + (a.username || a.open_id)).join(', ') : '-'}</b>
               <span>Automasi</span><b>{u.rules}</b>
               <span>Aktivitas</span><b>{u.last_event_at ? timeAgo(u.last_event_at) : '-'}</b>
               <span>Daftar</span><b>{date(u.created_at)}</b>
+              {u.last_login_at && <><span>Login terakhir</span><b>{timeAgo(u.last_login_at)}</b></>}
             </div>
             {u.token_refresh_error && <div className="small" style={{ color: '#b3261e' }}>⚠ token: {u.token_refresh_error}</div>}
             {u.note && <div className="small muted">📝 {u.note}</div>}
@@ -515,6 +519,18 @@ const GROUPS: { title: string; desc: string; fields: Def[] }[] = [
     { key: 'verify_token', label: 'Verify token webhook' },
     { key: 'graph_version', label: 'Versi Graph API', hint: 'mis. v23.0' },
   ] },
+  { title: 'Login Google', desc: 'Google Cloud Console → APIs & Services → Credentials → OAuth client ID (Web).', fields: [
+    { key: 'google_client_id', label: 'Client ID', hint: '…apps.googleusercontent.com' },
+    { key: 'google_client_secret', label: 'Client secret', kind: 'secret' },
+  ] },
+  { title: 'TikTok', desc: 'TikTok API for Business → My Apps → Wanychat (Accounts API).', fields: [
+    { key: 'tiktok_app_id', label: 'App ID' },
+    { key: 'tiktok_secret', label: 'Secret', kind: 'secret' },
+  ] },
+  { title: 'Email (SMTP)', desc: 'Pengirim email OTP, invoice, dan promosi. Server SMTP diatur di kredensial n8n "Wanychat SMTP".', fields: [
+    { key: 'mail_from', label: 'Alamat pengirim', hint: 'Harus mailbox yang dipakai kredensial SMTP, mis. contact@remot.in.' },
+    { key: 'mail_from_name', label: 'Nama pengirim', hint: 'mis. Wanychat' },
+  ] },
   { title: 'AI (DeepSeek)', desc: 'Balasan AI untuk komentar.', fields: [
     { key: 'gemini_enabled', label: 'Balasan AI aktif (global)', kind: 'bool' },
     { key: 'gemini_persona', label: 'Persona bawaan', kind: 'area', hint: 'Dipakai paket tanpa persona sendiri.' },
@@ -615,12 +631,56 @@ function SettingsTab({ guard }: { guard: Guard }) {
               <Copy label="Callback URL webhook Meta" value={data.settings.webhooks.meta} />
               <Copy label="OAuth redirect URI" value={data.settings.webhooks.oauth_redirect} />
             </>}
+            {g.title === 'Login Google' && <Copy label="Authorized redirect URI" value={data.settings.webhooks.google_redirect} />}
+            {g.title === 'TikTok' && <Copy label="TikTok account holder redirect URL" value={data.settings.webhooks.tiktok_redirect} />}
+            {g.title === 'Email (SMTP)' && <MailTools guard={guard} />}
             {g.title === 'Midtrans' && <Copy label="Payment Notification URL (dasbor Midtrans → Settings → Payment; juga dikirim otomatis per transaksi)" value={data.settings.webhooks.midtrans} />}
             {g.title === 'DOKU' && <Copy label="Notification URL (dasbor DOKU → Checkout & tiap metode bayar)" value={data.settings.webhooks.doku} />}
           </section>
         ))}
       </div>
     </>
+  )
+}
+
+// Tes SMTP + email promosi ke pengguna yang setuju menerima (marketing_opt_in, email terverifikasi)
+function MailTools({ guard }: { guard: Guard }) {
+  const toast = useToast()
+  const [to, setTo] = useState('')
+  const [subject, setSubject] = useState('')
+  const [body, setBody] = useState('')
+  const [busy, setBusy] = useState('')
+  const [confirm, setConfirm] = useState(false)
+  const run = async (key: string, action: string, payload: Record<string, unknown>) => {
+    setBusy(key)
+    try {
+      const r = await saApi<{ sent: number }>(action, payload)
+      toast(`Terkirim ke ${r.sent} alamat`)
+    } catch (e) { guard(e) } finally { setBusy('') }
+  }
+  return (
+    <div className="stack" style={{ gap: 12 }}>
+      <hr className="rule" />
+      <Field label="Tes kirim ke" hint="Mengirim contoh email kode OTP lewat SMTP.">
+        <div className="row" style={{ flexWrap: 'nowrap' }}>
+          <input className="input" type="email" value={to} onChange={(e) => setTo(e.target.value)} placeholder="email@contoh.id" />
+          <button className="btn sm" disabled={!!busy || !to} onClick={() => run('test', 'sa.mail.test', { to })}>{busy === 'test' ? <Spinner /> : 'Tes'}</button>
+        </div>
+      </Field>
+      <h3 className="card-title" style={{ margin: 0 }}>Email promosi</h3>
+      <Field label="Subjek"><input className="input" maxLength={150} value={subject} onChange={(e) => setSubject(e.target.value)} /></Field>
+      <Field label="Isi" hint="Teks biasa. Baris kosong = paragraf baru, link otomatis bisa diklik. Link berhenti berlangganan ditambahkan otomatis.">
+        <textarea className="input" rows={6} value={body} onChange={(e) => setBody(e.target.value)} />
+      </Field>
+      <div className="row">
+        <button className="btn sm" disabled={!!busy || !to || !subject || !body} onClick={() => run('btest', 'sa.mail.broadcast', { subject, body, test_to: to })}>
+          {busy === 'btest' ? <Spinner /> : 'Kirim contoh ke alamat tes'}
+        </button>
+        <button className="btn sm dark" disabled={!!busy || !subject || !body} onClick={() => setConfirm(true)}>{busy === 'send' ? <Spinner /> : 'Kirim ke semua pelanggan'}</button>
+      </div>
+      {confirm && <Confirm title="Kirim email promosi?" tone="primary" body="Email dikirim ke semua pengguna yang emailnya terverifikasi dan setuju menerima promosi. Tidak bisa dibatalkan."
+        confirmLabel="Kirim sekarang" onCancel={() => setConfirm(false)} onConfirm={() => { setConfirm(false); run('send', 'sa.mail.broadcast', { subject, body }) }} />}
+    </div>
   )
 }
 

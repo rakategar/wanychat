@@ -20,6 +20,7 @@ TARGET = os.environ.get("TARGET", "local")
 CFG = json.loads((ROOT / "targets.json").read_text())[TARGET]
 DT = CFG["tables"]  # tabel yang belum dibuat di target -> "MISSING" (jalankan cloud_setup.py dulu)
 DEEPSEEK_CRED = CFG["deepseek"]  # None = belum dibuat; deploy_cloud.py menautkannya setelah dibuat di UI
+SMTP_CRED = CFG.get("smtp")  # kredensial SMTP "Wanychat SMTP" (dibuat di UI n8n; link_smtp.py menautkannya)
 FOLLOWUP_EVERY = CFG["followupEveryMin"]
 
 EVENT_COLS = ["account_id", "type", "status", "rule_id", "rule_name", "ig_user_id", "username", "ref_id", "media_id",
@@ -51,6 +52,20 @@ CREDIT_COLS = {"account_id": "string", "granted": "number", "used": "number"}
 INBOX_COLS = {"key": "string", "raw": "string", "signature": "string", "status": "string", "tries": "number",
               "error": "string"}
 AUDIT_COLS = {"actor": "string", "action": "string", "target": "string", "detail": "string", "ip": "string"}
+USER_COLS = {
+    "uid": "string", "email": "string", "email_verified": "boolean", "password_hash": "string", "google_sub": "string",
+    "name": "string", "avatar": "string", "group_id": "string", "onboarding": "string", "marketing_opt_in": "boolean",
+    "last_login_at": "dateTime",
+}
+OTP_COLS = {"email": "string", "purpose": "string", "code_hash": "string", "expires_at": "dateTime", "tries": "number",
+            "used": "boolean", "ip": "string"}
+TT_COLS = {
+    "open_id": "string", "username": "string", "display_name": "string", "avatar": "string", "access_token": "string",
+    "token_expires_at": "dateTime", "refresh_token": "string", "refresh_expires_at": "dateTime",
+    "token_refresh_error": "string", "owner_id": "string", "connected_at": "dateTime",
+}
+SESSION_COLS = {"token": "string", "user_id": "string", "ig_user_id": "string", "tt_open_id": "string",
+                "expires_at": "dateTime"}
 MONTH = "={{ $now.setZone('Asia/Jakarta').toFormat('yyyy-MM') }}"
 
 
@@ -192,6 +207,32 @@ USAGE_FILTER = [("account_id", "eq", "={{ $json.account_id }}"), ("month", "eq",
 AUDIT_VALUES = {c: "={{ $json." + c + " }}" for c in AUDIT_COLS}
 
 
+def user_write(name, pos, src, **extra):
+    """Simpan baris utuh wany_users (upsert per uid). src = ekspresi objek user, mis. "$json.user"."""
+    return dt_write(name, pos, "users", "upsert", {c: "={{ " + src + "." + c + " }}" for c in USER_COLS}, types=USER_COLS,
+                    filters=[("uid", "eq", "={{ " + src + ".uid }}")], **extra)
+
+
+def tt_write(name, pos, src, **extra):
+    return dt_write(name, pos, "tt_accounts", "upsert", {c: "={{ " + src + "." + c + " }}" for c in TT_COLS}, types=TT_COLS,
+                    filters=[("open_id", "eq", "={{ " + src + ".open_id }}")], **extra)
+
+
+def session_write(name, pos, src, **extra):
+    return dt_write(name, pos, "sessions", "insert", {c: "={{ " + src + "." + c + " }}" for c in SESSION_COLS},
+                    types=SESSION_COLS, **extra)
+
+
+def mail_node(name, pos, src="$json.mail", **extra):
+    """Kirim email lewat SMTP (kredensial "Wanychat SMTP"). Gagal kirim tidak menghentikan workflow: $json.error terisi."""
+    return node(name, "n8n-nodes-base.emailSend", 2.1, pos, {
+        "resource": "email", "operation": "send",
+        "fromEmail": "={{ " + src + ".from }}", "toEmail": "={{ " + src + ".to }}", "subject": "={{ " + src + ".subject }}",
+        "emailFormat": "both", "text": "={{ " + src + ".text }}", "html": "={{ " + src + ".html }}",
+        "options": {"appendAttribution": False},
+    }, onError="continueRegularOutput", **({"credentials": {"smtp": SMTP_CRED}} if SMTP_CRED else {}), **extra)
+
+
 def billing_write(name, pos, **extra):
     return dt_write(name, pos, "billing", "upsert", {c: "={{ $json.billing." + c + " }}" for c in BILLING_COLS},
                     types=BILLING_COLS, filters=[("account_id", "eq", "={{ $json.billing.account_id }}")], **extra)
@@ -311,6 +352,12 @@ def scheduler():
         dt_write("Simpan Token", [660, 300], "accounts", "update",
                  {c: "={{ $json." + c + " }}" for c in ["access_token", "token_expires_at", "token_refresh_error"]},
                  types={"token_expires_at": "dateTime"}, filters=[("ig_user_id", "eq", "={{ $json.ig_user_id }}")]),
+        dt_get("Baca Settings TikTok Token", [220, 420], "settings", alwaysOutputData=True, executeOnce=True),
+        dt_get("Baca TikTok Token", [440, 420], "tt_accounts", executeOnce=True),
+        code_node("Perpanjang Token TikTok", [660, 420], "sched_tt_refresh.js"),
+        dt_write("Simpan Token TikTok", [880, 420], "tt_accounts", "update",
+                 {c: "={{ $json." + c + " }}" for c in ["access_token", "token_expires_at", "refresh_token", "refresh_expires_at", "token_refresh_error"]},
+                 types=TT_COLS, filters=[("open_id", "eq", "={{ $json.open_id }}")]),
     ]
     c = {}
     chain(c, "Cek Follow Up", "Baca Settings", "Baca Akun", "Baca Kontak", "Baca Billing", "Baca Usage",
@@ -320,6 +367,8 @@ def scheduler():
     connect(c, "Rute Hasil", "Simpan Usage", 2)
     chain(c, "Setiap Hari 03.00", "Baca Akun Token", "Perpanjang Token", "Simpan Token")
     connect(c, "Setiap Hari 03.00", "Bersihkan Inbox")
+    connect(c, "Setiap Hari 03.00", "Baca Settings TikTok Token")
+    chain(c, "Baca Settings TikTok Token", "Baca TikTok Token", "Perpanjang Token TikTok", "Simpan Token TikTok")
     chain(c, "Setiap 2 Menit", "Baca Settings Inbox", "Baca Inbox Tertunda", "Putar Ulang Event", "Rute Inbox")
     connect(c, "Rute Inbox", "Update Inbox", 0)
     connect(c, "Rute Inbox", "Simpan Log Inbox", 1)
@@ -330,24 +379,32 @@ def scheduler():
 # ---------------------------------------------------------------- Admin API + login Instagram
 def admin_api():
     acc = "={{ $json.account_id }}"
-    me = "={{ $('Cari Sesi').first().json.ig_user_id || 'none' }}"
-    grp = "={{ $('Baca Akun').first().json.owner_id || $('Baca Akun').first().json.ig_user_id || 'none' }}"
+    sess = "$('Cari Sesi').first().json"
+    grp_js = "String($('Baca User').first().json.group_id || $('Baca User').first().json.uid || 'none')"
+    grp = "={{ " + grp_js + " }}"
+    # Akun IG yang sedang dibuka: akun sesi bila masih milik grup, selain itu akun pertama grup (sama dengan api_route.js)
+    ig_rows = ("$('Baca Akun Grup').all().map(i => i.json).filter(a => a.ig_user_id && a.access_token && "
+               "String(a.owner_id || a.ig_user_id) === " + grp_js + ")")
+    me = ("={{ " + ig_rows + ".map(a => String(a.ig_user_id)).find(id => id === String(" + sess + ".ig_user_id)) || (" +
+          ig_rows + "[0] || {}).ig_user_id || 'none' }}")
     routes = ["deny", "direct", "account_update", "logout", "rules_save", "rules_delete", "events_list",
               "followups_list", "logs_clear", "payment_insert", "billing_save", "payments_list", "session_switch",
-              "account_unlink", "analytics"]
+              "account_unlink", "analytics", "user_update", "tt_update"]
     list_body = "={{ { ok: true, %s: $input.all().map(i => i.json).filter(r => r.id) } }}"
     first_resp = "={{ $('Proses Permintaan').first().json.response }}"
     rule_values = {c: "={{ $json." + c + " }}" for c in RULE_COLS}
-    session_cookie = "wany_session={{ $('Buat Sesi').item.json.session }}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=2592000"
     n = [
         # --- API panel
         webhook("Webhook API", [0, 300], "POST", "wany-api", "responseNode"),
         dt_get("Baca Settings", [220, 300], "settings", alwaysOutputData=True, executeOnce=True),
         dt_get("Cari Sesi", [440, 300], "sessions", filters=[("token", "eq", cookie_hash("Webhook API", "wany_session"))],
                alwaysOutputData=True, executeOnce=True),
-        dt_get("Baca Akun", [660, 300], "accounts", filters=[("ig_user_id", "eq", me)], alwaysOutputData=True, executeOnce=True),
+        dt_get("Baca User", [550, 140], "users", filters=[("uid", "eq", "={{ " + sess + ".user_id || 'none' }}")],
+               alwaysOutputData=True, executeOnce=True),
         dt_get("Baca Akun Grup", [660, -20], "accounts", filters=[("owner_id", "eq", grp), ("ig_user_id", "eq", grp)],
                match="any", alwaysOutputData=True, executeOnce=True),
+        dt_get("Baca TikTok Grup", [660, -180], "tt_accounts", filters=[("owner_id", "eq", grp)],
+               alwaysOutputData=True, executeOnce=True),
         dt_get("Baca Billing Akun", [660, 140], "billing", filters=[("account_id", "eq", grp)],
                alwaysOutputData=True, executeOnce=True),
         dt_get("Baca Usage Akun", [660, 460], "usage", filters=[("month", "eq", MONTH)],
@@ -394,56 +451,71 @@ def admin_api():
                 "plan: r.plan, amount: r.amount, status: r.status, payment_type: r.payment_type, kind: r.kind, "
                 "paid_at: r.paid_at, credits: r.credits, gateway: r.gateway || 'doku', createdAt: r.createdAt, "
                 "pay_url: r.status === 'pending' && /^https:\\/\\//.test(r.pay_url || '') && Date.now() - new Date(r.createdAt).getTime() < 7200000 ? r.pay_url : '' })) } }}", executeOnce=True),
-        dt_write("Pindah Akun", [1380, 1820], "sessions", "update", {"ig_user_id": "={{ $json.target }}"},
-                 filters=[("token", "eq", cookie_hash("Webhook API", "wany_session"))], executeOnce=True),
+        dt_write("Pindah Akun", [1380, 1820], "sessions", "update", {"ig_user_id": "={{ $json.ig }}", "tt_open_id": "={{ $json.tt }}"},
+                 filters=[("token", "eq", cookie_hash("Webhook API", "wany_session"))], executeOnce=True, alwaysOutputData=True),
         respond("Balas Pindah Akun", [1620, 1820], first_resp, executeOnce=True),
-        dt_write("Lepas Akun", [1380, 1980], "accounts", "update", {"owner_id": ""},
-                 filters=[("ig_user_id", "eq", "={{ $json.target }}")], executeOnce=True),
+        # Lepas = owner_id "unlinked" + token dihapus: Engine/Scheduler melewati akun tanpa token
+        dt_write("Lepas Akun", [1380, 1980], "accounts", "update", {"owner_id": "unlinked", "access_token": ""},
+                 filters=[("ig_user_id", "eq", "={{ $json.target }}")], executeOnce=True, alwaysOutputData=True),
         respond("Balas Lepas Akun", [1620, 1980], first_resp, executeOnce=True),
         dt_get("Baca Events Analitik", [1380, 2140], "events", filters=[("account_id", "eq", acc)],
                order=("createdAt", "DESC"), limit=20000, alwaysOutputData=True),
         code_node("Hitung Analitik", [1620, 2140], "analytics.js"),
         respond("Balas Analitik", [1860, 2140], "={{ $json.response }}", executeOnce=True),
+        user_write("Simpan User", [1380, 2300], "$json.user", executeOnce=True),
+        respond("Balas Simpan User", [1620, 2300], first_resp, executeOnce=True),
+        tt_write("Simpan TikTok", [1380, 2460], "$json.tt", executeOnce=True),
+        respond("Balas TikTok", [1620, 2460], first_resp, "{{ $('Proses Permintaan').first().json.status || 200 }}", executeOnce=True),
 
-        # --- Login dengan Instagram: /webhook/wany-login -> instagram.com -> /webhook/wany-oauth
-        webhook("Webhook Login", [0, 1900], "GET", "wany-login", "responseNode"),
-        dt_get("Baca Settings Login", [220, 1900], "settings", alwaysOutputData=True, executeOnce=True),
-        crypto_random("Buat State", [440, 1900], "state", 32),
-        code_node("Susun URL Login", [660, 1900], "oauth_start.js"),
-        redirect("Ke Instagram", [880, 1900], "={{ $json.location }}", "={{ $json.cookie }}"),
+        # --- Tautkan Instagram: /webhook/wany-login -> instagram.com -> /webhook/wany-oauth (wajib sudah login Wanychat)
+        webhook("Webhook Login", [0, 2700], "GET", "wany-login", "responseNode"),
+        dt_get("Baca Settings Login", [220, 2700], "settings", alwaysOutputData=True, executeOnce=True),
+        crypto_random("Buat State", [440, 2700], "state", 32),
+        code_node("Susun URL Login", [660, 2700], "oauth_start.js"),
+        redirect("Ke Instagram", [880, 2700], "={{ $json.location }}", "={{ $json.cookie }}"),
 
-        webhook("Webhook Login Callback", [0, 2160], "GET", "wany-oauth", "responseNode"),
-        dt_get("Baca Settings Callback", [220, 2160], "settings", alwaysOutputData=True, executeOnce=True),
-        dt_get("Baca Akun Callback", [440, 2160], "accounts", alwaysOutputData=True, executeOnce=True),
-        dt_get("Baca Billing Callback", [660, 2000], "billing", alwaysOutputData=True, executeOnce=True),
-        dt_get("Cari Sesi Callback", [660, 2320], "sessions",
+        webhook("Webhook Login Callback", [0, 2960], "GET", "wany-oauth", "responseNode"),
+        dt_get("Baca Settings Callback", [220, 2960], "settings", alwaysOutputData=True, executeOnce=True),
+        dt_get("Baca Akun Callback", [440, 2960], "accounts", alwaysOutputData=True, executeOnce=True),
+        dt_get("Baca Billing Callback", [660, 2800], "billing", alwaysOutputData=True, executeOnce=True),
+        dt_get("Cari Sesi Callback", [660, 3120], "sessions",
                filters=[("token", "eq", cookie_hash("Webhook Login Callback", "wany_session"))],
                alwaysOutputData=True, executeOnce=True),
-        code_node("Tukar Kode Login", [660, 2160], "oauth_callback.js"),
-        node("Login Berhasil?", "n8n-nodes-base.if", 2.2, [880, 2160], {"conditions": {
+        dt_get("Baca User Callback", [770, 3280], "users",
+               filters=[("uid", "eq", "={{ $('Cari Sesi Callback').first().json.user_id || 'none' }}")],
+               alwaysOutputData=True, executeOnce=True),
+        dt_get("Baca Semua User Callback", [880, 3280], "users", alwaysOutputData=True, executeOnce=True),
+        dt_get("Baca Kredit Callback", [990, 3280], "credits", alwaysOutputData=True, executeOnce=True),
+        dt_get("Baca TikTok Callback", [1100, 3280], "tt_accounts", filters=[("owner_id", "eq",
+               "={{ $('Baca User Callback').first().json.group_id || $('Baca User Callback').first().json.uid || 'none' }}")],
+               alwaysOutputData=True, executeOnce=True),
+        code_node("Tukar Kode Login", [880, 2960], "oauth_callback.js"),
+        node("Login Berhasil?", "n8n-nodes-base.if", 2.2, [1100, 2960], {"conditions": {
             "options": {"caseSensitive": True, "leftValue": "", "typeValidation": "strict", "version": 2},
             "conditions": [{"id": nid("login-ok"), "leftValue": "={{ $json.ok }}", "rightValue": "",
                             "operator": {"type": "boolean", "operation": "true", "singleValue": True}}],
             "combinator": "and"}, "options": {}}),
-        dt_write("Simpan Akun", [1120, 2080], "accounts", "upsert",
+        dt_write("Simpan Akun", [1340, 2880], "accounts", "upsert",
                  {c: "={{ $json.account." + c + " }}" for c in list(ACCOUNT_COLS) + ["connected_at"]},
                  types=dict(ACCOUNT_COLS, connected_at="dateTime"),
                  filters=[("ig_user_id", "eq", "={{ $json.account.ig_user_id }}")]),
-        crypto_random("Buat Sesi", [1340, 2080], "session", 64),
-        dt_write("Simpan Sesi", [1560, 2080], "sessions", "insert", {
-            "token": "={{ $json.session.hash('sha256') }}",
-            "ig_user_id": "={{ $('Tukar Kode Login').item.json.account.ig_user_id }}",
-            "expires_at": "={{ $now.plus(30, 'days').toISO() }}",
-        }, types={"expires_at": "dateTime"}),
-        redirect("Masuk ke Panel", [1780, 2080], "={{ $('Tukar Kode Login').item.json.location }}", "=" + session_cookie),
-        redirect("Login Gagal", [1120, 2260], "={{ $json.location }}"),
+        user_write("Simpan User Klaim", [1560, 2880], "$('Tukar Kode Login').first().json.user", executeOnce=True),
+        code_node("Siapkan Pindah Grup", [1780, 2880], "ig_repoint.js"),
+        dt_write("Pindah Grup Akun", [2000, 2880], "accounts", "update", {"owner_id": "={{ $json.owner_id }}"},
+                 filters=[("ig_user_id", "eq", "={{ $json.ig_user_id }}")], alwaysOutputData=True),
+        dt_write("Buka Akun Baru", [2220, 2880], "sessions", "update",
+                 {"ig_user_id": "={{ $('Tukar Kode Login').first().json.account.ig_user_id }}"},
+                 filters=[("token", "eq", cookie_hash("Webhook Login Callback", "wany_session"))],
+                 executeOnce=True, alwaysOutputData=True),
+        redirect("Kembali ke Panel", [2440, 2880], "={{ $('Tukar Kode Login').first().json.location }}"),
+        redirect("Tautkan Gagal", [1340, 3060], "={{ $json.location }}"),
     ]
     c = {}
-    chain(c, "Webhook API", "Baca Settings", "Cari Sesi", "Baca Akun", "Baca Akun Grup", "Baca Billing Akun",
-          "Baca Usage Akun", "Baca Kredit", "Baca Rules Akun", "Proses Permintaan", "Rute API")
+    chain(c, "Webhook API", "Baca Settings", "Cari Sesi", "Baca User", "Baca Akun Grup", "Baca TikTok Grup",
+          "Baca Billing Akun", "Baca Usage Akun", "Baca Kredit", "Baca Rules Akun", "Proses Permintaan", "Rute API")
     targets = ["Tolak", "Balas", "Update Akun", "Hapus Sesi", "Simpan Rule", "Hapus Rule", "Baca Events",
                "Baca Follow Up", "Hapus Semua Log", "Simpan Checkout", "Simpan Billing", "Baca Pembayaran",
-               "Pindah Akun", "Lepas Akun", "Baca Events Analitik"]
+               "Pindah Akun", "Lepas Akun", "Baca Events Analitik", "Simpan User", "Simpan TikTok"]
     for i, t in enumerate(targets):
         connect(c, "Rute API", t, i)
     chain(c, "Update Akun", "Balas Update Akun")
@@ -459,13 +531,169 @@ def admin_api():
     chain(c, "Pindah Akun", "Balas Pindah Akun")
     chain(c, "Lepas Akun", "Balas Lepas Akun")
     chain(c, "Baca Events Analitik", "Hitung Analitik", "Balas Analitik")
+    chain(c, "Simpan User", "Balas Simpan User")
+    chain(c, "Simpan TikTok", "Balas TikTok")
     chain(c, "Webhook Login", "Baca Settings Login", "Buat State", "Susun URL Login", "Ke Instagram")
     chain(c, "Webhook Login Callback", "Baca Settings Callback", "Baca Akun Callback", "Baca Billing Callback",
-          "Cari Sesi Callback", "Tukar Kode Login", "Login Berhasil?")
+          "Cari Sesi Callback", "Baca User Callback", "Baca Semua User Callback", "Baca Kredit Callback",
+          "Baca TikTok Callback", "Tukar Kode Login", "Login Berhasil?")
     connect(c, "Login Berhasil?", "Simpan Akun", 0)
-    connect(c, "Login Berhasil?", "Login Gagal", 1)
-    chain(c, "Simpan Akun", "Buat Sesi", "Simpan Sesi", "Masuk ke Panel")
+    connect(c, "Login Berhasil?", "Tautkan Gagal", 1)
+    chain(c, "Simpan Akun", "Simpan User Klaim", "Siapkan Pindah Grup", "Pindah Grup Akun", "Buka Akun Baru",
+          "Kembali ke Panel")
     return workflow("IgarAdminApi0001", "Wanychat · Admin API", n, c)
+
+
+# ---------------------------------------------------------------- Akun Wanychat: daftar/masuk email + Google + unsub
+def auth():
+    first = "$('Proses Auth').first().json"
+    email_expr = "={{ String((($('Webhook Auth').first().json.body || {}).payload || {}).email || '').trim().toLowerCase().slice(0, 254) || 'none' }}"
+    is_ok = lambda name, field: node(name, "n8n-nodes-base.if", 2.2, [0, 0], {"conditions": {
+        "options": {"caseSensitive": True, "leftValue": "", "typeValidation": "strict", "version": 2},
+        "conditions": [{"id": nid(name), "leftValue": "={{ $json." + field + " }}", "rightValue": "",
+                        "operator": {"type": "boolean", "operation": "true", "singleValue": True}}],
+        "combinator": "and"}, "options": {}})
+    mail_reply = ("={{ $json.error ? { ok: false, error: 'Gagal mengirim email. Coba lagi sebentar lagi.' } : " + first + ".response }}")
+    mail_status = "{{ $json.error ? 502 : (" + first + ".status || 200) }}"
+    n = [
+        webhook("Webhook Auth", [0, 300], "POST", "wany-auth", "responseNode"),
+        dt_get("Baca Settings Auth", [220, 300], "settings", alwaysOutputData=True, executeOnce=True),
+        dt_get("Baca User Auth", [440, 300], "users", filters=[("email", "eq", email_expr)], alwaysOutputData=True, executeOnce=True),
+        dt_get("Baca OTP Auth", [660, 300], "otp", filters=[("email", "eq", email_expr)], order=("createdAt", "DESC"), limit=10,
+               alwaysOutputData=True, executeOnce=True),
+        code_node("Proses Auth", [880, 300], "auth_route.js"),
+        switch("Rute Auth", [1100, 300], "route", ["direct", "user_otp", "otp_mail", "otp_fail", "session"]),
+        respond("Balas Auth", [1340, 0], "={{ $json.response }}", "{{ $json.status || 200 }}", executeOnce=True),
+        # daftar: user + OTP + email
+        user_write("Simpan User Daftar", [1340, 160], "$json.user", executeOnce=True),
+        dt_write("Simpan OTP Daftar", [1560, 160], "otp", "insert", {c: "={{ " + first + ".otp." + c + " }}" for c in OTP_COLS},
+                 types=OTP_COLS, executeOnce=True),
+        mail_node("Kirim OTP Daftar", [1780, 160], first + ".mail", executeOnce=True),
+        respond("Balas Daftar", [2000, 160], mail_reply, mail_status, executeOnce=True),
+        # kirim ulang / lupa password
+        dt_write("Simpan OTP", [1340, 320], "otp", "insert", {c: "={{ $json.otp." + c + " }}" for c in OTP_COLS},
+                 types=OTP_COLS, executeOnce=True),
+        mail_node("Kirim OTP", [1560, 320], first + ".mail", executeOnce=True),
+        respond("Balas OTP", [1780, 320], mail_reply, mail_status, executeOnce=True),
+        # kode salah
+        dt_write("Catat OTP Salah", [1340, 480], "otp", "update",
+                 {"tries": "={{ $json.otp_update.tries }}", "used": "={{ $json.otp_update.used }}"},
+                 types=OTP_COLS, filters=[("id", "eq", "={{ $json.otp_update.id }}")], executeOnce=True, alwaysOutputData=True),
+        respond("Balas OTP Salah", [1560, 480], "={{ " + first + ".response }}", "{{ " + first + ".status || 400 }}", executeOnce=True),
+        # masuk: OTP terpakai + user + cabut sesi lama (reset password) + sesi baru
+        dt_write("Pakai OTP", [1340, 640], "otp", "update",
+                 {"tries": "={{ $json.otp_update.tries }}", "used": "={{ $json.otp_update.used }}"},
+                 types=OTP_COLS, filters=[("id", "eq", "={{ $json.otp_update.id }}")], executeOnce=True, alwaysOutputData=True),
+        user_write("Simpan User Masuk", [1560, 640], first + ".user", executeOnce=True),
+        dt_delete("Cabut Sesi Lama", [1780, 640], "sessions", [("user_id", "eq", "={{ " + first + ".revoke_user }}")], executeOnce=True),
+        session_write("Simpan Sesi", [2000, 640], first + ".session", executeOnce=True),
+        respond("Balas Masuk", [2220, 640], "={{ " + first + ".response }}", executeOnce=True,
+                headers={"Set-Cookie": "={{ " + first + ".cookie }}"}),
+
+        # --- Lanjut dengan Google
+        webhook("Webhook Google", [0, 900], "GET", "wany-google", "responseNode"),
+        dt_get("Baca Settings Google", [220, 900], "settings", alwaysOutputData=True, executeOnce=True),
+        crypto_random("Buat State Google", [440, 900], "state", 32),
+        code_node("Susun URL Google", [660, 900], "google_start.js"),
+        redirect("Ke Google", [880, 900], "={{ $json.location }}", "={{ $json.cookie }}"),
+        webhook("Webhook Google Callback", [0, 1100], "GET", "wany-google-cb", "responseNode"),
+        dt_get("Baca Settings Google Callback", [220, 1100], "settings", alwaysOutputData=True, executeOnce=True),
+        code_node("Tukar Kode Google", [440, 1100], "google_exchange.js"),
+        dict(is_ok("Google Berhasil?", "ok"), position=[660, 1100]),
+        dt_get("Cari User Google", [880, 1040], "users", filters=[
+            ("google_sub", "eq", "={{ $('Tukar Kode Google').first().json.google.sub }}"),
+            ("email", "eq", "={{ $('Tukar Kode Google').first().json.google.email }}")],
+            match="any", alwaysOutputData=True, executeOnce=True),
+        code_node("Masuk Google", [1100, 1040], "google_login.js"),
+        dict(is_ok("Masuk Google OK?", "ok"), position=[1320, 1040]),
+        user_write("Simpan User Google", [1540, 980], "$json.user", executeOnce=True),
+        session_write("Simpan Sesi Google", [1760, 980], "$('Masuk Google').first().json.session", executeOnce=True),
+        redirect("Masuk ke Panel Google", [1980, 980], "={{ $('Masuk Google').first().json.location }}",
+                 "={{ $('Masuk Google').first().json.cookie }}"),
+        redirect("Google Gagal", [1100, 1220], "={{ $json.location }}"),
+
+        # --- Berhenti langganan email marketing
+        webhook("Webhook Unsub", [0, 1400], "GET", "wany-unsub", "responseNode"),
+        dt_get("Baca Settings Unsub", [220, 1400], "settings", alwaysOutputData=True, executeOnce=True),
+        code_node("Cek Link Unsub", [440, 1400], "unsub.js"),
+        dt_write("Matikan Email Promosi", [660, 1400], "users", "update", {"marketing_opt_in": False},
+                 types=USER_COLS, filters=[("uid", "eq", "={{ $json.uid }}")], executeOnce=True, alwaysOutputData=True),
+        node("Balas Unsub", "n8n-nodes-base.respondToWebhook", 1.4, [880, 1400], {
+            "respondWith": "text", "responseBody": "={{ $('Cek Link Unsub').first().json.html }}",
+            "options": {"responseHeaders": {"entries": [{"name": "Content-Type", "value": "text/html; charset=utf-8"},
+                                                        {"name": "Cache-Control", "value": "no-store"}]}},
+        }, executeOnce=True),
+    ]
+    c = {}
+    chain(c, "Webhook Auth", "Baca Settings Auth", "Baca User Auth", "Baca OTP Auth", "Proses Auth", "Rute Auth")
+    for i, t in enumerate(["Balas Auth", "Simpan User Daftar", "Simpan OTP", "Catat OTP Salah", "Pakai OTP"]):
+        connect(c, "Rute Auth", t, i)
+    chain(c, "Simpan User Daftar", "Simpan OTP Daftar", "Kirim OTP Daftar", "Balas Daftar")
+    chain(c, "Simpan OTP", "Kirim OTP", "Balas OTP")
+    chain(c, "Catat OTP Salah", "Balas OTP Salah")
+    chain(c, "Pakai OTP", "Simpan User Masuk", "Cabut Sesi Lama", "Simpan Sesi", "Balas Masuk")
+    chain(c, "Webhook Google", "Baca Settings Google", "Buat State Google", "Susun URL Google", "Ke Google")
+    chain(c, "Webhook Google Callback", "Baca Settings Google Callback", "Tukar Kode Google", "Google Berhasil?")
+    connect(c, "Google Berhasil?", "Cari User Google", 0)
+    connect(c, "Google Berhasil?", "Google Gagal", 1)
+    chain(c, "Cari User Google", "Masuk Google", "Masuk Google OK?")
+    connect(c, "Masuk Google OK?", "Simpan User Google", 0)
+    connect(c, "Masuk Google OK?", "Google Gagal", 1)
+    chain(c, "Simpan User Google", "Simpan Sesi Google", "Masuk ke Panel Google")
+    chain(c, "Webhook Unsub", "Baca Settings Unsub", "Cek Link Unsub", "Matikan Email Promosi", "Balas Unsub")
+    return workflow("WanyAuth00000001", "Wanychat · Akun", n, c)
+
+
+# ---------------------------------------------------------------- TikTok (Accounts API): hubungkan akun
+def tiktok():
+    def if_ok(name, pos):
+        return node(name, "n8n-nodes-base.if", 2.2, pos, {"conditions": {
+            "options": {"caseSensitive": True, "leftValue": "", "typeValidation": "strict", "version": 2},
+            "conditions": [{"id": nid(name), "leftValue": "={{ $json.ok }}", "rightValue": "",
+                            "operator": {"type": "boolean", "operation": "true", "singleValue": True}}],
+            "combinator": "and"}, "options": {}})
+    grp = "={{ $('Baca User TikTok').first().json.group_id || $('Baca User TikTok').first().json.uid || 'none' }}"
+    n = [
+        webhook("Webhook TikTok Start", [0, 0], "GET", "wany-tiktok-start", "responseNode"),
+        dt_get("Baca Settings TikTok Start", [220, 0], "settings", alwaysOutputData=True, executeOnce=True),
+        crypto_random("Buat State TikTok", [440, 0], "state", 32),
+        code_node("Susun URL TikTok", [660, 0], "tiktok_start.js"),
+        redirect("Ke TikTok", [880, 0], "={{ $json.location }}", "={{ $json.cookie }}"),
+
+        webhook("Webhook TikTok Callback", [0, 300], "GET", "wany-tiktok-login", "responseNode"),
+        dt_get("Baca Settings TikTok", [220, 300], "settings", alwaysOutputData=True, executeOnce=True),
+        code_node("Tukar Kode TikTok", [440, 300], "tiktok_exchange.js"),
+        if_ok("Token TikTok OK?", [660, 300]),
+        dt_get("Cari Sesi TikTok", [880, 240], "sessions",
+               filters=[("token", "eq", cookie_hash("Webhook TikTok Callback", "wany_session"))], alwaysOutputData=True, executeOnce=True),
+        dt_get("Baca User TikTok", [1100, 240], "users",
+               filters=[("uid", "eq", "={{ $('Cari Sesi TikTok').first().json.user_id || 'none' }}")], alwaysOutputData=True, executeOnce=True),
+        dt_get("Baca Akun Grup TikTok", [1320, 240], "accounts", filters=[("owner_id", "eq", grp), ("ig_user_id", "eq", grp)],
+               match="any", alwaysOutputData=True, executeOnce=True),
+        dt_get("Baca TikTok Terkait", [1540, 240], "tt_accounts", filters=[
+            ("open_id", "eq", "={{ $('Tukar Kode TikTok').first().json.open_id }}"), ("owner_id", "eq", grp)],
+            match="any", alwaysOutputData=True, executeOnce=True),
+        dt_get("Baca Billing TikTok", [1760, 240], "billing", filters=[("account_id", "eq", grp)], alwaysOutputData=True, executeOnce=True),
+        code_node("Tautkan TikTok", [1980, 240], "tiktok_link.js"),
+        if_ok("Tautkan TikTok OK?", [2200, 240]),
+        tt_write("Simpan Akun TikTok", [2420, 180], "$json.account", executeOnce=True),
+        dt_write("Buka Akun TikTok", [2640, 180], "sessions", "update",
+                 {"tt_open_id": "={{ $('Tautkan TikTok').first().json.account.open_id }}"},
+                 filters=[("token", "eq", cookie_hash("Webhook TikTok Callback", "wany_session"))], executeOnce=True, alwaysOutputData=True),
+        redirect("Kembali dari TikTok", [2860, 180], "={{ $('Tautkan TikTok').first().json.location }}"),
+        redirect("TikTok Gagal", [880, 420], "={{ $json.location }}"),
+    ]
+    c = {}
+    chain(c, "Webhook TikTok Start", "Baca Settings TikTok Start", "Buat State TikTok", "Susun URL TikTok", "Ke TikTok")
+    chain(c, "Webhook TikTok Callback", "Baca Settings TikTok", "Tukar Kode TikTok", "Token TikTok OK?")
+    connect(c, "Token TikTok OK?", "Cari Sesi TikTok", 0)
+    connect(c, "Token TikTok OK?", "TikTok Gagal", 1)
+    chain(c, "Cari Sesi TikTok", "Baca User TikTok", "Baca Akun Grup TikTok", "Baca TikTok Terkait", "Baca Billing TikTok",
+          "Tautkan TikTok", "Tautkan TikTok OK?")
+    connect(c, "Tautkan TikTok OK?", "Simpan Akun TikTok", 0)
+    connect(c, "Tautkan TikTok OK?", "TikTok Gagal", 1)
+    chain(c, "Simpan Akun TikTok", "Buka Akun TikTok", "Kembali dari TikTok")
+    return workflow("WanyTikTok000001", "Wanychat · TikTok", n, c)
 
 
 # ---------------------------------------------------------------- Billing (DOKU / Midtrans) + daftar paket publik
@@ -480,8 +708,12 @@ def billing():
         dt_get("Baca Pembayaran", [660, 0], "payments",
                filters=[("order_id", "eq", "={{ $('Ambil Body Mentah').first().json.invoice || 'none' }}")],
                alwaysOutputData=True, executeOnce=True),
+        dt_get("Baca User Pembayaran", [770, -160], "users",
+               filters=[("group_id", "eq", "={{ $('Baca Pembayaran').first().json.account_id || 'none' }}")],
+               alwaysOutputData=True, executeOnce=True),
         code_node("Proses Notifikasi", [880, 0], "billing_notify.js"),
-        switch("Rute Billing", [1100, 0], "kind", ["billing", "payment", "audit", "credits"]),
+        switch("Rute Billing", [1100, 0], "kind", ["billing", "payment", "audit", "credits", "mail"]),
+        mail_node("Kirim Invoice", [1340, 480]),
         credits_write("Simpan Kredit", [1340, 320], "granted"),
         billing_write("Simpan Billing", [1340, -160]),
         payment_write("Simpan Pembayaran", [1340, 0]),
@@ -511,8 +743,8 @@ def billing():
     c = {}
     connect(c, "Webhook Midtrans", "Ambil Body Mentah")
     chain(c, "Webhook DOKU", "Ambil Body Mentah", "Baca Settings", "Baca Billing", "Baca Kredit", "Baca Pembayaran",
-          "Proses Notifikasi", "Rute Billing")
-    for i, t in enumerate(["Simpan Billing", "Simpan Pembayaran", "Catat Audit", "Simpan Kredit"]):
+          "Baca User Pembayaran", "Proses Notifikasi", "Rute Billing")
+    for i, t in enumerate(["Simpan Billing", "Simpan Pembayaran", "Catat Audit", "Simpan Kredit", "Kirim Invoice"]):
         connect(c, "Rute Billing", t, i)
     chain(c, "Setiap Hari 04.00", "Baca Settings Sync", "Baca Billing Sync", "Baca Pembayaran Sync", "Baca Kredit Sync",
           "Sinkron Langganan", "Rute Sync")
@@ -527,7 +759,7 @@ def superadmin():
     resp = "={{ $('Cek Admin').all().map(i => i.json).find(j => j.response).response }}"
     status = "{{ $('Cek Admin').all().map(i => i.json).find(j => j.response).status || 200 }}"
     routes = ["deny", "direct", "login", "logout", "data", "settings_save", "billing_save", "revoke", "audit", "cleanup",
-              "credits_save"]
+              "credits_save", "mail"]
     n = [
         webhook("Webhook SA", [0, 300], "POST", "wany-sa", "responseNode"),
         dt_get("Baca Settings", [220, 300], "settings", alwaysOutputData=True, executeOnce=True),
@@ -535,6 +767,7 @@ def superadmin():
                filters=[("token_hash", "eq", cookie_hash("Webhook SA", "wany_sa"))], alwaysOutputData=True, executeOnce=True),
         dt_get("Baca Billing", [660, 300], "billing", alwaysOutputData=True, executeOnce=True),
         dt_get("Baca Kredit", [770, 460], "credits", alwaysOutputData=True, executeOnce=True),
+        dt_get("Baca Users SA", [770, 140], "users", alwaysOutputData=True, executeOnce=True),
         code_node("Cek Admin", [880, 300], "sa_auth.js"),
         switch("Rute SA", [1100, 300], "route", routes),
         respond("Tolak SA", [1380, -300], "={{ $json.response }}", "401", executeOnce=True),
@@ -556,6 +789,7 @@ def superadmin():
                alwaysOutputData=True, executeOnce=True),
         dt_get("Baca Audit SA", [2480, 300], "audit", order=("createdAt", "DESC"), limit=300,
                alwaysOutputData=True, executeOnce=True),
+        dt_get("Baca TikTok SA", [2590, 460], "tt_accounts", alwaysOutputData=True, executeOnce=True),
         code_node("Data Superadmin", [2700, 300], "sa_data.js"),
         respond("Balas Data", [2920, 300], "={{ $json.response }}", executeOnce=True),
         dt_write("Simpan Setting", [1380, 460], "settings", "upsert",
@@ -563,33 +797,38 @@ def superadmin():
         respond("Balas Setting", [1620, 460], resp, executeOnce=True),
         billing_write("Simpan Billing SA", [1380, 620]),
         respond("Balas Billing SA", [1620, 620], resp, executeOnce=True),
-        dt_delete("Cabut Sesi User", [1380, 780], "sessions", [("ig_user_id", "eq", "={{ $json.account_id }}")]),
+        dt_delete("Cabut Sesi User", [1380, 780], "sessions", [("user_id", "eq", "={{ $json.user_id || 'none' }}")]),
         respond("Balas Cabut Sesi", [1620, 780], resp, executeOnce=True),
         dt_write("Catat Audit SA", [1380, 940], "audit", "insert", AUDIT_VALUES),
         dt_delete("Hapus Sesi Kedaluwarsa", [1380, 1100], "admin_sessions", [("expires_at", "lt", "={{ $json.before }}")]),
         credits_write("Simpan Kredit SA", [1380, 1260], "granted", executeOnce=True),
         respond("Balas Kredit SA", [1620, 1260], resp, executeOnce=True),
+        mail_node("Kirim Email SA", [1380, 1420]),
+        respond("Balas Email SA", [1620, 1420],
+                "={{ $input.all().some(i => i.json.error) ? { ok: false, error: 'Sebagian/semua email gagal: ' + $input.all().find(i => i.json.error).json.error.message } : " + resp[4:-3] + " }}",
+                executeOnce=True),
     ]
     c = {}
-    chain(c, "Webhook SA", "Baca Settings", "Cari Sesi Admin", "Baca Billing", "Baca Kredit", "Cek Admin", "Rute SA")
+    chain(c, "Webhook SA", "Baca Settings", "Cari Sesi Admin", "Baca Billing", "Baca Kredit", "Baca Users SA", "Cek Admin", "Rute SA")
     for i, t in enumerate(["Tolak SA", "Balas SA", "Simpan Sesi Admin", "Hapus Sesi Admin", "Baca Akun SA",
                            "Simpan Setting", "Simpan Billing SA", "Cabut Sesi User", "Catat Audit SA",
-                           "Hapus Sesi Kedaluwarsa", "Simpan Kredit SA"]):
+                           "Hapus Sesi Kedaluwarsa", "Simpan Kredit SA", "Kirim Email SA"]):
         connect(c, "Rute SA", t, i)
     chain(c, "Simpan Sesi Admin", "Balas Login")
     chain(c, "Hapus Sesi Admin", "Balas Logout SA")
     chain(c, "Baca Akun SA", "Baca Usage SA", "Baca Pembayaran SA", "Baca Rules SA", "Baca Events SA", "Baca Audit SA",
-          "Data Superadmin", "Balas Data")
+          "Baca TikTok SA", "Data Superadmin", "Balas Data")
     chain(c, "Simpan Setting", "Balas Setting")
     chain(c, "Simpan Billing SA", "Balas Billing SA")
     chain(c, "Cabut Sesi User", "Balas Cabut Sesi")
     chain(c, "Simpan Kredit SA", "Balas Kredit SA")
+    chain(c, "Kirim Email SA", "Balas Email SA")
     return workflow("WanySuperAdmin01", "Wanychat · Superadmin", n, c)
 
 
 if __name__ == "__main__":
     DIST.mkdir(parents=True, exist_ok=True)
-    for wf in (engine(), scheduler(), admin_api(), billing(), superadmin()):
+    for wf in (engine(), scheduler(), admin_api(), auth(), tiktok(), billing(), superadmin()):
         path = DIST / (wf["id"] + ".json")
         path.write_text(json.dumps(wf, indent=2, ensure_ascii=False))
         print("ditulis", path.relative_to(ROOT), "-", len(wf["nodes"]), "node")

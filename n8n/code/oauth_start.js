@@ -1,12 +1,12 @@
-// Mulai login Instagram: arahkan ke halaman izin Instagram, simpan state anti-CSRF di cookie
+// Tautkan Instagram ke akun Wanychat yang sedang login: arahkan ke halaman izin Instagram, simpan state anti-CSRF.
+// ?from=onboarding -> state berakhiran "-ob" supaya callback kembali ke onboarding.
 const s = {};
 for (const it of $('Baca Settings Login').all()) if (it.json.key) s[it.json.key] = it.json.value ?? '';
 const base = String(s.public_url || '').replace(/\/$/, '');
-// ?link=1 = tambah akun Instagram ke langganan yang sedang login (mode dibawa di state, dicek lagi di callback)
-const link = String((($('Webhook Login').first().json.query) || {}).link || '') === '1';
-const state = $input.first().json.state + (link ? '-link' : '');
+const from = String((($('Webhook Login').first().json.query) || {}).from || '');
+const state = $input.first().json.state + (from === 'onboarding' ? '-ob' : '');
 if (!s.ig_app_id) {
-  return [{ json: { location: base + '/#/login?error=' + encodeURIComponent('Login Instagram belum diaktifkan (Instagram App ID belum diisi admin).'), cookie: 'wany_state=; Path=/webhook; Max-Age=0' } }];
+  return [{ json: { location: base + '/#/' + (from === 'onboarding' ? 'onboarding' : 'settings') + '?error=' + encodeURIComponent('Koneksi Instagram belum diaktifkan admin.'), cookie: 'wany_state=; Path=/webhook; Max-Age=0' } }];
 }
 const params = {
   enable_fb_login: '0',

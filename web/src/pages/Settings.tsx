@@ -1,11 +1,84 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { api, LINK_URL, LOGIN_URL, switchAccount, type Account, type Billing, type Member, type Profile } from '../api'
+import { api, connectUrl, switchAccount, type Account, type Billing, type Me, type Profile, type SocialAccount } from '../api'
 import { Confirm, Field, Spinner, Switch, useToast } from '../components/ui'
 import { InstallCard } from '../components/Install'
+import { CHANNEL } from '../components/Connect'
 
 type Sub = { subscribed_fields: string[] }
 
-export default function SettingsPage({ account, billing, reload, logout }: { account: Account; billing: Billing | null; reload: () => Promise<Account>; logout: () => void }) {
+export default function SettingsPage({ me, reload, logout }: { me: Me; reload: () => Promise<Me>; logout: () => void }) {
+  return (
+    <>
+      <div className="page-head">
+        <div>
+          <h1>Akun</h1>
+          <p>Profil akun Wanychat, akun Instagram & TikTok yang terhubung, dan gaya balasan AI.</p>
+        </div>
+      </div>
+      <div className="grid two">
+        <ProfileSection me={me} reload={reload} logout={logout} />
+        <LinkedAccounts me={me} reload={reload} />
+        {me.account && <InstagramSection key={me.account.ig_user_id} account={me.account} billing={me.billing} reload={reload} />}
+        <InstallCard />
+      </div>
+    </>
+  )
+}
+
+function ProfileSection({ me, reload, logout }: { me: Me; reload: () => Promise<Me>; logout: () => void }) {
+  const toast = useToast()
+  const { user } = me
+  const [name, setName] = useState(user.name)
+  const [promo, setPromo] = useState(user.marketing_opt_in)
+  const [pw, setPw] = useState({ current: '', next: '' })
+  const [busy, setBusy] = useState('')
+  const run = async (label: string, fn: () => Promise<unknown>, ok: string) => {
+    setBusy(label)
+    try { await fn(); toast(ok) } catch (e) { toast((e as Error).message, 'error') } finally { setBusy('') }
+  }
+  return (
+    <section className="card stack">
+      <div className="row" style={{ flexWrap: 'nowrap', gap: 14 }}>
+        {user.avatar ? <img className="avatar" style={{ width: 64, height: 64 }} src={user.avatar} alt="" referrerPolicy="no-referrer" />
+          : <span className="avatar" style={{ width: 64, height: 64 }}>{(user.name || user.email).slice(0, 1).toUpperCase()}</span>}
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 22, letterSpacing: '-0.02em' }} className="ellipsis">{user.name || 'Akun Wanychat'}</div>
+          <div className="muted ellipsis">{user.email}</div>
+          <div className="row small" style={{ gap: 6, marginTop: 4 }}>
+            {user.email_verified && <span className="badge green">Email terverifikasi</span>}
+            {user.has_google && <span className="badge">Google</span>}
+            {user.has_password && <span className="badge">Password</span>}
+          </div>
+        </div>
+      </div>
+      <form className="stack" style={{ gap: 12 }} onSubmit={(e) => { e.preventDefault(); run('profile', async () => { await api('user.update', { name, marketing_opt_in: promo }); await reload() }, 'Profil tersimpan') }}>
+        <Field label="Nama"><input className="input" value={name} maxLength={80} autoComplete="name" onChange={(e) => setName(e.target.value)} /></Field>
+        <Switch checked={promo} onChange={setPromo} label="Terima tips & promo Wanychat lewat email" />
+        <button className="btn primary" disabled={!!busy}>{busy === 'profile' ? <Spinner /> : 'Simpan profil'}</button>
+      </form>
+      <hr className="rule" />
+      <form className="stack" style={{ gap: 12 }} onSubmit={(e) => {
+        e.preventDefault()
+        run('pw', async () => { await api('user.password', pw); setPw({ current: '', next: '' }); await reload() }, user.has_password ? 'Password diganti' : 'Password dibuat. Sekarang bisa masuk dengan email + password.')
+      }}>
+        <h3 className="card-title" style={{ margin: 0 }}>{user.has_password ? 'Ganti password' : 'Buat password'}</h3>
+        {!user.has_password && <p className="small muted" style={{ margin: 0 }}>Akunmu dibuat dengan Google. Buat password supaya bisa masuk juga dengan email.</p>}
+        {user.has_password && (
+          <Field label="Password lama"><input className="input" type="password" autoComplete="current-password" value={pw.current} onChange={(e) => setPw({ ...pw, current: e.target.value })} /></Field>
+        )}
+        <Field label="Password baru" hint="Minimal 8 karakter, berisi huruf dan angka.">
+          <input className="input" type="password" autoComplete="new-password" value={pw.next} onChange={(e) => setPw({ ...pw, next: e.target.value })} />
+        </Field>
+        <button className="btn" disabled={!!busy || !pw.next}>{busy === 'pw' ? <Spinner /> : user.has_password ? 'Ganti password' : 'Buat password'}</button>
+      </form>
+      <hr className="rule" />
+      <div className="row"><span className="spacer" /><button className="btn sm danger" onClick={logout}>Keluar</button></div>
+    </section>
+  )
+}
+
+// Akun Instagram yang sedang dibuka: status koneksi + gaya balasan AI
+function InstagramSection({ account, billing, reload }: { account: Account; billing: Billing | null; reload: () => Promise<Me> }) {
   const toast = useToast()
   const [busy, setBusy] = useState('')
   const [profile, setProfile] = useState<Profile | null>(null)
@@ -38,70 +111,55 @@ export default function SettingsPage({ account, billing, reload, logout }: { acc
 
   return (
     <>
-      <div className="page-head">
-        <div>
-          <h1>Akun</h1>
-          <p>Akun Instagram yang terhubung dan gaya balasan AI.</p>
+      <section className="card stack">
+        <div className="row" style={{ flexWrap: 'nowrap', gap: 14 }}>
+          {account.avatar ? <img className="avatar" style={{ width: 56, height: 56 }} src={account.avatar} alt="" /> : <span className="avatar" style={{ width: 56, height: 56 }} />}
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 20, letterSpacing: '-0.02em' }}>📸 @{account.username}</div>
+            <div className="muted" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{account.name}</div>
+            {profile && <div className="small"><b>{profile.followers_count?.toLocaleString('id-ID')}</b> pengikut · <b>{profile.media_count}</b> post</div>}
+          </div>
         </div>
-      </div>
 
-      <div className="grid two">
-        <section className="card stack">
-          <div className="row" style={{ flexWrap: 'nowrap', gap: 14 }}>
-            {account.avatar ? <img className="avatar" style={{ width: 72, height: 72 }} src={account.avatar} alt="" /> : <span className="avatar" style={{ width: 72, height: 72 }} />}
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 700, fontSize: 22, letterSpacing: '-0.02em' }}>@{account.username}</div>
-              <div className="muted" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{account.name}</div>
-              {profile && <div className="small"><b>{profile.followers_count?.toLocaleString('id-ID')}</b> pengikut · <b>{profile.media_count}</b> post</div>}
-            </div>
-          </div>
+        <div>
+          <Status ok={subs === null && !statusError ? null : connected} title={connected ? 'Instagram terhubung' : 'Koneksi bermasalah'}
+            desc={statusError || 'Izin membaca komentar & mengirim DM aktif.'} />
+          <Status ok={subs === null ? null : listening} title={listening ? 'Menerima komentar & DM' : 'Belum menerima komentar & DM'}
+            desc={listening ? 'Setiap komentar baru langsung diproses.' : 'Tekan "Perbaiki" supaya komentar dan DM diteruskan ke sistem.'}
+            action={subs !== null && !listening && connected ? (
+              <button className="btn sm green" disabled={!!busy} onClick={() => run('sub', async () => { await api('ig.subscribe'); await check() }, 'Sudah menerima komentar & DM')}>
+                {busy === 'sub' ? <Spinner /> : 'Perbaiki'}
+              </button>
+            ) : undefined} />
+          <Status ok={!account.token_refresh_error} title="Koneksi diperpanjang otomatis"
+            desc={account.token_refresh_error
+              ? 'Gagal memperpanjang. Hubungkan ulang Instagram.'
+              : expires ? `Aman sampai ${expires.toLocaleDateString('id-ID', { dateStyle: 'long' })}, lalu diperpanjang sendiri.` : 'Diperpanjang sendiri setiap hari.'} />
+        </div>
 
-          <div>
-            <Status ok={subs === null && !statusError ? null : connected} title={connected ? 'Instagram terhubung' : 'Koneksi bermasalah'}
-              desc={statusError || 'Izin membaca komentar & mengirim DM aktif.'} />
-            <Status ok={subs === null ? null : listening} title={listening ? 'Menerima komentar & DM' : 'Belum menerima komentar & DM'}
-              desc={listening ? 'Setiap komentar baru langsung diproses.' : 'Tekan "Perbaiki" supaya komentar dan DM diteruskan ke sistem.'}
-              action={subs !== null && !listening && connected ? (
-                <button className="btn sm green" disabled={!!busy} onClick={() => run('sub', async () => { await api('ig.subscribe'); await check() }, 'Sudah menerima komentar & DM')}>
-                  {busy === 'sub' ? <Spinner /> : 'Perbaiki'}
-                </button>
-              ) : undefined} />
-            <Status ok={!account.token_refresh_error} title="Koneksi diperpanjang otomatis"
-              desc={account.token_refresh_error
-                ? 'Gagal memperpanjang. Masuk ulang dengan Instagram.'
-                : expires ? `Aman sampai ${expires.toLocaleDateString('id-ID', { dateStyle: 'long' })}, lalu diperpanjang sendiri.` : 'Diperpanjang sendiri setiap hari.'} />
-          </div>
-
-          <div className="row">
-            <button className="btn sm" disabled={!!busy} onClick={() => run('check', async () => { await check(); await reload() }, 'Status diperbarui')}>
-              {busy === 'check' ? <Spinner /> : 'Periksa ulang'}
-            </button>
-            <a className="btn sm" href={LOGIN_URL}>Hubungkan ulang Instagram</a>
-            <span className="spacer" />
-            <button className="btn sm danger" onClick={logout}>Keluar</button>
-          </div>
-        </section>
-
-        <section className="card stack">
-          <div>
-            <h2 className="card-title">Balasan AI</h2>
-            <p className="card-sub" style={{ margin: 0 }}>Menjawab komentar yang tidak cocok keyword di automasi yang menyalakan "Balasan AI".</p>
-          </div>
-          <Switch checked={ai} onChange={setAi} label={ai ? 'AI aktif' : 'AI dimatikan'} />
-          <Field label="Gaya bahasa AI" hint={canPersona
-            ? "Tulis seperti memberi arahan ke admin baru. Contoh: sapa dengan 'kak', maksimal 2 kalimat, jangan sebut harga."
-            : <>Persona sendiri tersedia mulai paket Pro. Sekarang memakai gaya bawaan Wanychat. <a href="#/billing">Lihat paket</a></>}>
-            <textarea className="input" rows={5} value={persona} disabled={!canPersona} onChange={(e) => setPersona(e.target.value)} />
-          </Field>
-          <button className="btn primary" disabled={!!busy} onClick={() => run('ai', async () => { await api('settings.save', canPersona ? { ai_enabled: ai, ai_persona: persona } : { ai_enabled: ai }); await reload() }, 'Pengaturan AI tersimpan')}>
-            {busy === 'ai' ? <Spinner /> : 'Simpan'}
+        <div className="row">
+          <button className="btn sm" disabled={!!busy} onClick={() => run('check', async () => { await check(); await reload() }, 'Status diperbarui')}>
+            {busy === 'check' ? <Spinner /> : 'Periksa ulang'}
           </button>
-        </section>
+          <a className="btn sm" href={connectUrl('instagram')}>Hubungkan ulang Instagram</a>
+        </div>
+      </section>
 
-        <LinkedAccounts account={account} billing={billing} />
-
-        <InstallCard />
-      </div>
+      <section className="card stack">
+        <div>
+          <h2 className="card-title">Balasan AI · @{account.username}</h2>
+          <p className="card-sub" style={{ margin: 0 }}>Menjawab komentar yang tidak cocok keyword di automasi yang menyalakan "Balasan AI".</p>
+        </div>
+        <Switch checked={ai} onChange={setAi} label={ai ? 'AI aktif' : 'AI dimatikan'} />
+        <Field label="Gaya bahasa AI" hint={canPersona
+          ? "Tulis seperti memberi arahan ke admin baru. Contoh: sapa dengan 'kak', maksimal 2 kalimat, jangan sebut harga."
+          : <>Persona sendiri tersedia mulai paket Pro. Sekarang memakai gaya bawaan Wanychat. <a href="#/billing">Lihat paket</a></>}>
+          <textarea className="input" rows={5} value={persona} disabled={!canPersona} onChange={(e) => setPersona(e.target.value)} />
+        </Field>
+        <button className="btn primary" disabled={!!busy} onClick={() => run('ai', async () => { await api('settings.save', canPersona ? { ai_enabled: ai, ai_persona: persona } : { ai_enabled: ai }); await reload() }, 'Pengaturan AI tersimpan')}>
+          {busy === 'ai' ? <Spinner /> : 'Simpan'}
+        </button>
+      </section>
     </>
   )
 }
@@ -119,71 +177,69 @@ function Status({ ok, title, desc, action }: { ok: boolean | null; title: string
   )
 }
 
-// Akun Instagram lain dalam satu langganan: tiap akun punya dasbor sendiri, kuota paket dibagi bersama
-function LinkedAccounts({ account, billing }: { account: Account; billing: Billing | null }) {
+// Akun sosial milik user (Instagram + TikTok): kuota paket dipakai bersama, tiap akun punya dasbor sendiri
+function LinkedAccounts({ me, reload }: { me: Me; reload: () => Promise<Me> }) {
   const toast = useToast()
-  const [data, setData] = useState<{ accounts: Member[]; limit: number; is_owner: boolean; plan: string } | null>(null)
   const [busy, setBusy] = useState('')
-  const [unlink, setUnlink] = useState<Member | null>(null)
-  const load = () => api<{ accounts: Member[]; limit: number; is_owner: boolean; plan: string }>('accounts.list').then(setData).catch(() => {})
-  useEffect(() => { load() }, [account.ig_user_id]) // eslint-disable-line react-hooks/exhaustive-deps
-  if (!data) return <section className="card"><Spinner /></section>
-  const free = Math.max(0, data.limit - data.accounts.length)
-  const canAdd = data.limit > 1 && free > 0
+  const [unlink, setUnlink] = useState<SocialAccount | null>(null)
+  const { accounts, billing } = me
+  const limit = billing.accounts_limit
+  const free = Math.max(0, limit - accounts.length)
   return (
     <section className="card stack">
       <div>
-        <h2 className="card-title">Akun Instagram di langganan ini</h2>
+        <h2 className="card-title">Akun sosial terhubung</h2>
         <p className="card-sub" style={{ margin: 0 }}>
-          {data.limit > 1
-            ? <>Paket {data.plan}: {data.limit} akun, kuota DM & AI dipakai bersama. Tiap akun punya automasi dan dasbor sendiri.</>
-            : <>Paket {data.plan} untuk 1 akun. Paket Pro bisa 2 akun, Bisnis 5 akun. <a href="#/billing">Lihat paket</a></>}
+          Paket {billing.plan.name}: {limit} akun Instagram/TikTok{limit > 1 ? ', kuota dipakai bersama' : ''}.{' '}
+          {limit < 5 && <a href="#/billing">Butuh lebih banyak?</a>}
         </p>
       </div>
       <div>
-        {data.accounts.map((m) => (
-          <div key={m.ig_user_id} className="member-row">
-            {m.avatar ? <img className="avatar" src={m.avatar} alt="" /> : <span className="avatar" />}
+        {accounts.length === 0 && <p className="muted" style={{ margin: 0 }}>Belum ada akun terhubung.</p>}
+        {accounts.map((a) => (
+          <div key={a.type + a.id} className="member-row">
+            {a.avatar ? <img className="avatar" src={a.avatar} alt="" /> : <span className="avatar" />}
             <div>
-              <div className="ellipsis" style={{ fontWeight: 700 }}>@{m.username}</div>
+              <div className="ellipsis" style={{ fontWeight: 700 }}>@{a.username || a.id}</div>
               <div className="small muted">
-                {m.owner ? 'Pemilik langganan' : 'Akun tambahan'}{m.current ? ' · sedang dibuka' : ''}{!m.active ? ' · tidak aktif (melebihi paket)' : ''}
+                {CHANNEL[a.type].icon} {CHANNEL[a.type].label}{a.current ? ' · sedang dibuka' : ''}{!a.active ? ' · tidak aktif (melebihi paket)' : ''}
+                {a.token_refresh_error ? ' · perlu dihubungkan ulang' : ''}
               </div>
             </div>
-            {!m.current && (
-              <button className="btn sm" disabled={!!busy} onClick={async () => { setBusy(m.ig_user_id); try { await switchAccount(m.ig_user_id) } catch (e) { toast((e as Error).message, 'error'); setBusy('') } }}>
-                {busy === m.ig_user_id ? <Spinner /> : 'Buka'}
+            {!a.current && (
+              <button className="btn sm" disabled={!!busy} onClick={async () => { setBusy(a.id); try { await switchAccount(a) } catch (e) { toast((e as Error).message, 'error'); setBusy('') } }}>
+                {busy === a.id ? <Spinner /> : 'Buka'}
               </button>
             )}
-            {!m.owner && (data.is_owner || m.current) && (
-              <button className="btn sm ghost" disabled={!!busy} onClick={() => setUnlink(m)}>{m.current ? 'Keluar grup' : 'Lepas'}</button>
-            )}
+            <button className="btn sm ghost" disabled={!!busy} onClick={() => setUnlink(a)}>Lepas</button>
           </div>
         ))}
       </div>
-      {canAdd && (
+      {free > 0 ? (
         <>
-          <a className="btn primary" href={LINK_URL}>＋ Tambah akun Instagram ({free} slot tersisa)</a>
-          <p className="hint" style={{ margin: 0 }}>Kamu akan diarahkan ke login Instagram. Masuk dengan akun yang ingin ditambahkan
-            (kalau Instagram langsung memakai akun ini, pilih "Bukan kamu?" atau keluar dulu di instagram.com).</p>
+          <div className="row">
+            <a className="btn ig-btn" href={connectUrl('instagram')}>📸 Tambah Instagram</a>
+            <a className="btn dark" href={connectUrl('tiktok')}>🎵 Tambah TikTok</a>
+          </div>
+          <p className="hint" style={{ margin: 0 }}>{free} slot tersisa. Kamu akan diarahkan ke halaman izin resmi. Untuk menambah akun lain di aplikasi yang sama,
+            keluar dulu dari akun yang sedang login di instagram.com / tiktok.com.</p>
         </>
-      )}
-      {!billing?.is_owner && billing?.owner_username && <p className="hint" style={{ margin: 0 }}>Langganan dikelola oleh @{billing.owner_username}.</p>}
+      ) : <p className="hint" style={{ margin: 0 }}>Semua slot paket terpakai. <a href="#/billing">Naikkan paket</a> untuk menambah akun.</p>}
       {unlink && (
         <Confirm
-          title={unlink.current ? 'Keluar dari langganan grup?' : `Lepas @${unlink.username}?`}
-          body={<p style={{ margin: 0 }}>@{unlink.username} jadi akun terpisah dengan paket Gratis. Automasi dan lognya tetap tersimpan. Bisa ditambahkan lagi kapan saja.</p>}
-          confirmLabel={unlink.current ? 'Keluar grup' : 'Lepas akun'}
+          title={`Lepas @${unlink.username || unlink.id}?`}
+          body={<p style={{ margin: 0 }}>Automasi akun ini berhenti dan izinnya dihapus dari Wanychat. Automasi & log tetap tersimpan dan kembali aktif kalau akun dihubungkan lagi.</p>}
+          confirmLabel="Lepas akun"
           onCancel={() => setUnlink(null)}
           onConfirm={async () => {
             const target = unlink
             setUnlink(null)
+            setBusy(target.id)
             try {
-              await api('accounts.unlink', { ig_user_id: target.ig_user_id })
-              toast('@' + target.username + ' dilepas')
-              if (target.current) window.location.reload()
-              else load()
-            } catch (e) { toast((e as Error).message, 'error') }
+              await api('accounts.unlink', { type: target.type, id: target.id })
+              toast('@' + (target.username || target.id) + ' dilepas')
+              await reload()
+            } catch (e) { toast((e as Error).message, 'error') } finally { setBusy('') }
           }}
         />
       )}

@@ -2,8 +2,14 @@ import { useCallback, useEffect, useState } from 'react'
 import { api, emptyRule, type Account, type Billing, type Media, type Rule } from '../api'
 import { Confirm, Empty, Spinner, Switch, useToast } from '../components/ui'
 import RuleEditor from './RuleEditor'
+import { NeedInstagram } from '../components/Connect'
 
-export default function Automations({ account, billing }: { account: Account; billing: Billing | null }) {
+export default function Automations({ account, billing }: { account: Account | null; billing: Billing | null }) {
+  if (!account) return <><div className="page-head"><div><h1>Automasi</h1><p>Keyword komentar & DM Instagram → balasan otomatis.</p></div></div><NeedInstagram what="Automasi komentar & DM" /></>
+  return <AutomationList account={account} billing={billing} />
+}
+
+function AutomationList({ account, billing }: { account: Account; billing: Billing | null }) {
   const toast = useToast()
   const [rules, setRules] = useState<Rule[] | null>(null)
   const [media, setMedia] = useState<Media[] | null>(null)

@@ -33,14 +33,24 @@ export interface Overview {
   months: MonthRow[]
   usage: { dm: number; ai: number; ai_tokens: number; comments: number; top_ai: { username: string; ai: number; ai_tokens: number; limit: number }[] }
   health: {
-    engine_enabled: boolean; signup_open: boolean; ai_enabled: boolean; doku: string; midtrans: string; gateway: 'doku' | 'midtrans'; meta_app: boolean
+    engine_enabled: boolean; signup_open: boolean; ai_enabled: boolean; doku: string; midtrans: string; gateway: 'doku' | 'midtrans'; meta_app: boolean; google: boolean; tiktok: boolean
     errors_24h: Record<string, number>; token_errors: string[]; token_expiring: string[]; last_event_at: string; over_quota: string[]
   }
   audit: AuditRow[]
 }
 
 export interface UserRow {
+  // satu baris = satu grup langganan (akun Wanychat); ig_user_id = group_id (kunci billing/kredit)
   ig_user_id: string
+  group_id: string
+  uid: string
+  email: string
+  email_verified: boolean
+  google: boolean
+  legacy: boolean
+  instagram: { ig_user_id: string; username: string; active: boolean; token_refresh_error: string }[]
+  tiktok: { open_id: string; username: string; token_refresh_error: string }[]
+  last_login_at: string
   username: string
   name: string
   avatar: string
@@ -92,6 +102,6 @@ export interface PaymentRow {
 export interface SettingsView {
   values: Record<string, string | { set: boolean; hint?: string }>
   plans: Plan[]
-  webhooks: { meta: string; oauth_redirect: string; doku: string; midtrans: string }
+  webhooks: { meta: string; oauth_redirect: string; google_redirect: string; tiktok_redirect: string; doku: string; midtrans: string }
   totp: boolean
 }

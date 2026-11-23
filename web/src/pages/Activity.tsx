@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { api, type EventRow, type Followup } from '../api'
+import { api, type Account, type EventRow, type Followup } from '../api'
+import { NeedInstagram } from '../components/Connect'
 import { Confirm, EVENT_META, Empty, Segmented, Spinner, timeAgo, useToast } from '../components/ui'
 
 type Tab = 'events' | 'followups'
@@ -11,7 +12,12 @@ const FILTERS: { id: string; label: string; match: (e: EventRow) => boolean }[] 
 ]
 const FU_COLOR: Record<string, string> = { pending: 'yellow', sent: 'green', expired: '', error: 'red' }
 
-export default function Activity() {
+export default function Activity({ account }: { account: Account | null }) {
+  if (!account) return <><div className="page-head"><div><h1>Aktivitas</h1><p>Log komentar, DM, dan follow-up.</p></div></div><NeedInstagram what="Log aktivitas" /></>
+  return <ActivityLog key={account.ig_user_id} />
+}
+
+function ActivityLog() {
   const toast = useToast()
   const [tab, setTab] = useState<Tab>('events')
   const [filter, setFilter] = useState('all')

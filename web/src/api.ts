@@ -67,16 +67,56 @@ export interface Account {
   owner_id: string
 }
 
-// Akun Instagram dalam satu langganan (pemilik + akun tambahan)
-export interface Member {
-  ig_user_id: string
+// Akun Wanychat (login email/password atau Google); akun sosial terhubung ke sini
+export interface Onboarding {
+  step?: 'channel' | 'about' | 'source' | 'plan' | 'done'
+  channel?: 'instagram' | 'tiktok' | 'explore'
+  for_whom?: 'employer' | 'myself' | 'client'
+  heard_from?: string[]
+  done?: boolean
+}
+
+export interface User {
+  uid: string
+  email: string
+  name: string
+  avatar: string
+  email_verified: boolean
+  has_password: boolean
+  has_google: boolean
+  onboarding: Onboarding
+  marketing_opt_in: boolean
+}
+
+// Akun sosial (Instagram / TikTok) milik user; kuota paket dipakai bersama
+export interface SocialAccount {
+  type: 'instagram' | 'tiktok'
+  id: string
   username: string
   name: string
   avatar: string
-  owner: boolean
   current: boolean
   active: boolean
   connected_at: string
+  token_refresh_error: string
+}
+
+export interface TikTokAccount {
+  open_id: string
+  username: string
+  display_name: string
+  avatar: string
+  connected_at: string
+  token_refresh_error: string
+}
+
+export interface Me {
+  user: User
+  account: Account | null
+  tiktok: TikTokAccount | null
+  accounts: SocialAccount[]
+  billing: Billing
+  announcement: string
 }
 
 export interface Media {
@@ -152,9 +192,13 @@ export interface Payment {
   pay_url?: string
 }
 
-// Login lewat Instagram: n8n memasang cookie sesi HttpOnly, browser mengirimnya otomatis ke /api
-export const LOGIN_URL = '/webhook/wany-login'
-export const LINK_URL = '/webhook/wany-login?link=1'
+// Login akun Wanychat (email/password lewat /auth, atau Google): n8n memasang cookie sesi HttpOnly.
+// Instagram & TikTok hanya ditautkan ke akun yang sedang login (halaman izin resmi masing-masing).
+export const GOOGLE_URL = '/webhook/wany-google'
+export const IG_CONNECT_URL = '/webhook/wany-login'
+export const TT_CONNECT_URL = '/webhook/wany-tiktok-start'
+export const connectUrl = (type: SocialAccount['type'], from?: 'onboarding') =>
+  (type === 'tiktok' ? TT_CONNECT_URL : IG_CONNECT_URL) + (from ? '?from=' + from : '')
 
 export class ApiError extends Error {
   data?: Record<string, unknown>
@@ -163,6 +207,11 @@ export class ApiError extends Error {
 
 export async function api<T = Record<string, unknown>>(action: string, payload?: unknown): Promise<T> {
   return post<T>('/api', {}, action, payload)
+}
+
+// Daftar / masuk / OTP / reset password (tanpa sesi)
+export async function authApi<T = Record<string, unknown>>(action: string, payload?: unknown): Promise<T> {
+  return post<T>('/auth', {}, action, payload)
 }
 
 // API superadmin: cookie wany_sa (Path=/sa-api, SameSite=Strict) + header khusus anti-CSRF
@@ -192,10 +241,10 @@ async function post<T>(url: string, headers: Record<string, string>, action: str
   return data as T
 }
 
-// Pindah dasbor antar akun Instagram dalam satu langganan (sesi login yang sama)
-export async function switchAccount(id: string) {
-  await api('accounts.switch', { ig_user_id: id })
-  window.location.hash = '#/dashboard'
+// Pindah dasbor ke akun sosial lain milik user (sesi login yang sama)
+export async function switchAccount(a: Pick<SocialAccount, 'type' | 'id'>) {
+  await api('accounts.switch', { type: a.type, id: a.id })
+  window.location.hash = a.type === 'tiktok' ? '#/tiktok' : '#/dashboard'
   window.location.reload()
 }
 

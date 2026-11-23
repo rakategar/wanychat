@@ -7,14 +7,29 @@
       "name": "DeepSeek (IG AutoReply)"
     },
     "tables": {
-      "settings": "lXsFXFYOG1vNOQSm",
-      "rules": "6N0b96Ev4OmcGXji",
-      "contacts": "8VbUdM7Qwgx35o51",
-      "events": "VAgLfGVw8zoqZOkx",
-      "followups": "LNARGAnTbAE7GHXb",
-      "accounts": "oxkODROZtykw123A",
-      "sessions": "XOH1fHmqkrseuj96"
-    }
+      "settings": "1eyb5JVkFdFA9cYg",
+      "rules": "wIDlFaPAUhWHR4KZ",
+      "contacts": "bAxbPGawQFijATwR",
+      "events": "mAfzDpYgZdnLLtJ3",
+      "followups": "1W0nKC3OF1ngpmRb",
+      "accounts": "gqHYE92ww6eMgQcY",
+      "sessions": "p1Nu5ToHWkWnIQRM",
+      "users": "o2OafVza1nBxQM6z",
+      "otp": "IGmK51CD62GuiMPx",
+      "tt_accounts": "xprS6WVhAwBVTV2S",
+      "billing": "kERpI07ji1SwDOFq",
+      "payments": "SEnlfyucsbR2khAc",
+      "usage": "gjgDxTuH6Ek43vst",
+      "admin_sessions": "NiVIo8YOgA6ClnU4",
+      "audit": "P3nB6sOotOJpey57",
+      "credits": "en4FT4SzyX9F0JHw",
+      "inbox": "Nr4itDVp8MZWiYW3"
+    },
+    "smtp": {
+      "id": "WanySmtpLocal001",
+      "name": "Wanychat SMTP"
+    },
+    "workflows": {}
   },
   "cloud": {
     "mcp": "n8n-biznet",
@@ -29,7 +44,9 @@
       "IgarEngine000001": "3LVULp61236ib4Po",
       "IgarSchedule0001": "S2Iv0Ae1MCaSboSY",
       "WanyBilling00001": "p2VzwSx4gU16VTJN",
-      "WanySuperAdmin01": "W4AypZ9iU6rWb2c4"
+      "WanySuperAdmin01": "W4AypZ9iU6rWb2c4",
+      "WanyAuth00000001": "SVGsLYk51eSzLdDw",
+      "WanyTikTok000001": "lMAXW7RYjo547imP"
     },
     "tables": {
       "settings": "YMGfBdIgw7eOTcUb",
@@ -45,7 +62,14 @@
       "admin_sessions": "pMJyMya7VF0cMH1A",
       "audit": "yXHCJUKwNySOUp5z",
       "credits": "snQqU3jmXHRJZDVt",
-      "inbox": "CAszk39qSfgph4Tt"
+      "inbox": "CAszk39qSfgph4Tt",
+      "users": "ZeW7k68ItCTOsaC3",
+      "otp": "I8SkFmtlzVzM0Fx5",
+      "tt_accounts": "AJvmuhLGZMVAmIEX"
+    },
+    "smtp": {
+      "id": "toHrI2BzMojBewnm",
+      "name": "SMTP account"
     }
   },
   "cloud_lama": {

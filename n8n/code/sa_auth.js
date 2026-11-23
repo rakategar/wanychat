@@ -12,6 +12,7 @@ for (const it of $('Baca Settings').all()) if (it.json.key) settings[it.json.key
 //#include lib_pay.js
 //#include lib_doku.js
 //#include lib_midtrans.js
+//#include lib_mail.js
 const base = String(settings.public_url || '').replace(/\/$/, '');
 const ip = String(headers['x-vercel-forwarded-for'] || headers['cf-connecting-ip'] || headers['x-real-ip'] || '').split(',')[0].trim();
 const edgeIp = String(headers['cf-connecting-ip'] || '');
@@ -208,7 +209,18 @@ const EDITABLE = {
   usd_idr: { ok: NUM(1000, 100000) },
   watermark_text: { ok: (v) => v.length <= 200 },
   ai_topups: { ok: validTopups },
+  google_client_id: { ok: (v) => v === '' || /^[\w-]+\.apps\.googleusercontent\.com$/.test(v) },
+  google_client_secret: { secret: true, ok: (v) => /^[\w-]{10,100}$/.test(v) },
+  tiktok_app_id: { ok: (v) => v === '' || /^\d{6,25}$/.test(v) },
+  tiktok_secret: { secret: true, ok: (v) => /^[a-f0-9]{20,80}$/i.test(v) },
+  mail_from: { ok: (v) => /^[^\s@<>"]+@[^\s@<>"]+\.[a-z]{2,}$/i.test(v) },
+  mail_from_name: { ok: (v) => v.length >= 1 && v.length <= 60 && !/["<>]/.test(v) },
 };
+
+// ID grup langganan: akun Wanychat baru (u_...) atau grup lama berbasis ID Instagram
+const GROUP_ID = /^(\d{5,25}|u_[a-f0-9]{24})$/;
+const wanyUsers = $('Baca Users SA').all().map(i => i.json).filter(u => u && u.uid);
+const userOfGroup = (gid) => wanyUsers.filter(u => String(u.group_id || u.uid) === gid).sort((a, b) => Number(b.id) - Number(a.id))[0];
 
 function validPlans(list) {
   if (!Array.isArray(list) || list.length < 1 || list.length > 8) return 'Jumlah paket 1-8';
@@ -277,7 +289,7 @@ switch (action) {
 
   case 'sa.user.update': {
     const id = String(p.account_id || '');
-    if (!/^\d{5,25}$/.test(id)) return done(400, { ok: false, error: 'account_id tidak valid' });
+    if (!GROUP_ID.test(id)) return done(400, { ok: false, error: 'account_id tidak valid' });
     const cur = billingRow(billingBy[id], id);
     const next = Object.assign({}, cur);
     if (p.plan !== undefined) {
@@ -294,7 +306,7 @@ switch (action) {
     if (typeof p.suspended === 'boolean') next.suspended = p.suspended;
     if (typeof p.note === 'string') next.note = p.note.trim().slice(0, 300);
     out.push({ json: { route: 'billing_save', billing: next, response: { ok: true, billing: next } } });
-    if (next.suspended && !cur.suspended) out.push({ json: { route: 'revoke', account_id: id } });
+    if (next.suspended && !cur.suspended) out.push({ json: { route: 'revoke', account_id: id, user_id: (userOfGroup(id) || {}).uid || 'none' } });
     audit('user_update', id, ['plan=' + next.plan, 'end=' + (next.period_end || '-'), 'suspended=' + next.suspended, next.note ? 'note' : ''].join(' '));
     return out;
   }
@@ -303,7 +315,7 @@ switch (action) {
     // Tambah/kurangi kredit AI grup (akun pemilik langganan). Hanya kolom granted yang ditulis.
     const id = String(p.account_id || '');
     const delta = Math.round(Number(p.delta));
-    if (!/^\d{5,25}$/.test(id)) return done(400, { ok: false, error: 'account_id tidak valid' });
+    if (!GROUP_ID.test(id)) return done(400, { ok: false, error: 'account_id tidak valid' });
     if (!delta || Math.abs(delta) > 1000000) return done(400, { ok: false, error: 'Jumlah kredit tidak valid' });
     const row = latestBy($('Baca Kredit').all().map(i => i.json), 'account_id')[id] || {};
     const granted = Math.max(Number(row.used) || 0, (Number(row.granted) || 0) + delta);
@@ -314,8 +326,8 @@ switch (action) {
 
   case 'sa.user.revoke': {
     const id = String(p.account_id || '');
-    if (!/^\d{5,25}$/.test(id)) return done(400, { ok: false, error: 'account_id tidak valid' });
-    out.push({ json: { route: 'revoke', account_id: id, response: { ok: true } } });
+    if (!GROUP_ID.test(id)) return done(400, { ok: false, error: 'account_id tidak valid' });
+    out.push({ json: { route: 'revoke', account_id: id, user_id: (userOfGroup(id) || {}).uid || 'none', response: { ok: true } } });
     audit('sessions_revoke', id, '');
     return out;
   }
@@ -360,6 +372,35 @@ switch (action) {
       return done(400, { ok: false, error: 'Password atau kode 2FA salah' });
     }
     return saveSettings([['sa_totp_secret', '']], { ok: true }, 'totp_disabled', '');
+  }
+
+  case 'sa.mail.test': {
+    // Tes SMTP: kirim contoh email OTP ke alamat yang diketik admin
+    const to = String(p.to || '').trim().toLowerCase();
+    if (!/^[^\s@<>"]+@[^\s@<>"]+\.[a-z]{2,}$/i.test(to)) return done(400, { ok: false, error: 'Email tujuan tidak valid' });
+    out.push({ json: { route: 'mail', mail: mailOtp(to, '123456', 'verify', 'Admin'), response: { ok: true, sent: 1 } } });
+    audit('mail_test', to, '');
+    return out;
+  }
+
+  case 'sa.mail.broadcast': {
+    // Email marketing ke user yang setuju menerima (marketing_opt_in) dan emailnya terverifikasi. test_to = kirim 1 contoh saja.
+    const subject = String(p.subject || '').trim().slice(0, 150);
+    const text = String(p.body || '').trim().slice(0, 20000);
+    if (subject.length < 3 || text.length < 10) return done(400, { ok: false, error: 'Isi subjek dan isi email' });
+    if (!settings.mail_secret) return done(400, { ok: false, error: 'mail_secret belum disetel (dibutuhkan untuk link berhenti berlangganan)' });
+    const seen = new Set();
+    let list = wanyUsers.filter(u => isTrue(u.email_verified) && isTrue(u.marketing_opt_in) && u.email)
+      .sort((a, b) => Number(b.id) - Number(a.id)).filter(u => !seen.has(u.uid) && seen.add(u.uid));
+    if (p.test_to) {
+      const to = String(p.test_to).trim().toLowerCase();
+      list = [{ uid: 'u_' + '0'.repeat(24), email: to, name: 'Admin' }];
+    }
+    if (!list.length) return done(400, { ok: false, error: 'Belum ada penerima yang setuju menerima email' });
+    if (list.length > 500) return done(400, { ok: false, error: 'Maksimal 500 penerima per kirim (batas SMTP). Hubungi developer untuk kirim bertahap.' });
+    for (const u of list) out.push({ json: { route: 'mail', mail: mailBroadcast(u.email, u.name, u.uid, subject, text), response: { ok: true, sent: list.length } } });
+    audit(p.test_to ? 'mail_broadcast_test' : 'mail_broadcast', subject, list.length + ' penerima');
+    return out;
   }
 
   default:

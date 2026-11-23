@@ -32,29 +32,45 @@ for (const e of events) {
 const ruleCount = {};
 for (const r of rules) ruleCount[r.account_id] = (ruleCount[r.account_id] || 0) + 1;
 
-const users = accounts.map(a => {
-  const id = String(a.ig_user_id);
-  const gid = groupOf(a); // akun tambahan memakai langganan akun pemilik
+// Satu baris per grup langganan = satu akun Wanychat (email/Google) beserta akun Instagram & TikTok-nya.
+// Grup lama (login IG, belum diklaim akun Wanychat) tetap tampil dengan email kosong.
+const wanyUsers = rows('Baca Users SA');
+const ttAll = rows('Baca TikTok SA').filter(a => a.access_token && a.owner_id && a.owner_id !== 'unlinked');
+const userBy = {};
+for (const u of wanyUsers.sort((a, b) => Number(a.id) - Number(b.id))) userBy[String(u.group_id || u.uid)] = u;
+const linked = accounts.filter(a => a.access_token && a.owner_id !== 'unlinked');
+const gids = [...new Set(Object.keys(userBy).concat(linked.map(groupOf)).concat(ttAll.map(a => String(a.owner_id))))];
+const users = gids.map(gid => {
+  const w = userBy[gid] || null;
   const b = billingBy[gid] || null;
   const plan = effectivePlan(b, plans);
   const c = creditBy[gid] || {};
-  const u = usageBy[id] || {};
+  const ig = groupMembers(linked, gid);
+  const tt = ttAll.filter(a => String(a.owner_id) === gid);
+  const sum = (k) => ig.reduce((t, a) => t + num((usageBy[String(a.ig_user_id)] || {})[k]), 0) + num((usageBy[gid] || {})[k]);
+  const last = Math.max(0, ...ig.map(a => lastEvent[String(a.ig_user_id)] || 0));
+  const first = ig[0] || {};
+  const exp = ig.map(a => a.token_expires_at).filter(Boolean).sort()[0] || '';
   return {
-    ig_user_id: id, username: a.username || '', name: a.name || '', avatar: a.avatar || '',
-    created_at: a.createdAt, connected_at: a.connected_at || '', token_expires_at: a.token_expires_at || '',
-    token_refresh_error: a.token_refresh_error || '',
+    group_id: gid, ig_user_id: gid, uid: w ? w.uid : '', email: w ? w.email || '' : '', email_verified: !!(w && isTrue(w.email_verified)),
+    google: !!(w && w.google_sub), legacy: !w,
+    username: first.username || (tt[0] && tt[0].username) || '', name: (w && w.name) || first.name || '', avatar: (w && w.avatar) || first.avatar || '',
+    instagram: ig.map((a, i) => ({ ig_user_id: String(a.ig_user_id), username: a.username || '', active: i < Math.max(1, num(plan.accounts) || 1), token_refresh_error: a.token_refresh_error || '' })),
+    tiktok: tt.map(a => ({ open_id: String(a.open_id), username: a.username || '', token_refresh_error: a.token_refresh_error || '' })),
+    created_at: (w && w.createdAt) || first.createdAt || '', connected_at: first.connected_at || '', last_login_at: (w && w.last_login_at) || '',
+    token_expires_at: exp, token_refresh_error: ig.concat(tt).map(a => a.token_refresh_error).filter(Boolean)[0] || '',
     plan: plan.id, subscribed_plan: b ? b.plan || 'free' : 'free', status: b ? b.status || '' : 'free',
     period_end: b ? b.period_end || '' : '', auto_renew: !!(b && b.subscription_id && !isTrue(b.cancel_at_period_end)),
     subscription_id: b ? b.subscription_id || '' : '', source: b ? b.source || '' : '', card_hint: b ? b.card_hint || '' : '',
     suspended: !!(b && isTrue(b.suspended)), note: b ? b.note || '' : '',
-    usage: { dm: num(u.dm), ai: num(u.ai), ai_tokens: num(u.ai_tokens), comments: num(u.comments) },
+    usage: { dm: sum('dm'), ai: sum('ai'), ai_tokens: sum('ai_tokens'), comments: sum('comments') },
     limits: { dm: num(plan.dm), ai: num(plan.ai), rules: num(plan.rules) },
-    rules: ruleCount[id] || 0, last_event_at: lastEvent[id] ? new Date(lastEvent[id]).toISOString() : '',
-    owner_id: gid === id ? '' : gid, owner_username: gid === id ? '' : nameOf[gid] || gid,
-    group_size: accounts.filter(x => groupOf(x) === gid).length, active: activeInGroup(a, accounts, plan),
+    rules: ig.reduce((t, a) => t + (ruleCount[a.ig_user_id] || 0), 0), last_event_at: last ? new Date(last).toISOString() : '',
+    owner_id: '', owner_username: '', group_size: ig.length + tt.length, active: true,
     credits: creditBalance(c), credits_granted: num(c.granted), credits_used: num(c.used),
   };
 });
+const createdIn = (m) => users.filter(x => x.created_at && monthKey(x.created_at) === m).length;
 
 function overview() {
   const months = [];
@@ -76,7 +92,7 @@ function overview() {
     return {
       month: m, revenue, fees, ai_tokens: tokens, ai_cost: aiCost, fixed_cost: fixedCost,
       profit: revenue - fees - aiCost - fixedCost, payments: paid.length,
-      new_users: accounts.filter(a => monthKey(a.createdAt) === m).length,
+      new_users: createdIn(m),
     };
   });
   const paidUsers = users.filter(x => x.plan !== 'free' && !x.owner_id);
@@ -87,7 +103,7 @@ function overview() {
     totals: {
       users: users.length, paid_users: paidUsers.length, suspended: users.filter(x => x.suspended).length,
       active_7d: users.filter(x => x.last_event_at && now - new Date(x.last_event_at).getTime() < 7 * DAY).length,
-      new_this_month: accounts.filter(a => monthKey(a.createdAt) === month).length,
+      new_this_month: createdIn(month),
       mrr, auto_renew: users.filter(x => x.auto_renew).length,
       canceled: users.filter(x => x.status === 'canceled').length, past_due: users.filter(x => x.status === 'past_due').length,
       rules: rules.length,
@@ -108,6 +124,8 @@ function overview() {
       midtrans: settings.midtrans_env === 'production' ? (settings.midtrans_server_key ? 'production' : '') : (settings.midtrans_sb_server_key ? 'sandbox' : ''),
       gateway: settings.payment_provider === 'midtrans' ? 'midtrans' : 'doku',
       meta_app: !!(settings.ig_app_id && settings.app_secret),
+      google: !!(settings.google_client_id && settings.google_client_secret),
+      tiktok: !!(settings.tiktok_app_id && settings.tiktok_secret),
       errors_24h: errors24,
       token_errors: users.filter(x => x.token_refresh_error).map(x => x.username),
       token_expiring: users.filter(x => x.token_expires_at && new Date(x.token_expires_at).getTime() - now < 7 * DAY).map(x => x.username),
@@ -118,7 +136,7 @@ function overview() {
   };
 }
 
-const SECRET = ['app_secret', 'doku_secret_key', 'midtrans_server_key', 'midtrans_sb_server_key', 'midtrans_signature_key', 'midtrans_sb_signature_key'];
+const SECRET = ['app_secret', 'google_client_secret', 'tiktok_secret', 'mail_secret', 'doku_secret_key', 'midtrans_server_key', 'midtrans_sb_server_key', 'midtrans_signature_key', 'midtrans_sb_signature_key'];
 // Setelan Midtrans versi langganan lama (tidak dipakai lagi)
 const LEGACY = /^midtrans_(payments|fee_pct|fee_flat|client_key)$/;
 const HIDDEN = /^sa_/;
@@ -133,6 +151,8 @@ function settingsView() {
     webhooks: {
       meta: 'https://kinasih.app.n8n.cloud/webhook/wany-ig',
       oauth_redirect: (settings.public_url || '') + '/webhook/wany-oauth',
+      google_redirect: (settings.public_url || '') + '/webhook/wany-google-cb',
+      tiktok_redirect: (settings.public_url || '') + '/webhook/wany-tiktok-login',
       doku: (settings.public_url || '') + '/webhook/wany-doku',
       midtrans: (settings.public_url || '') + '/webhook/wany-midtrans',
     },
@@ -144,7 +164,7 @@ let response;
 if (action === 'sa.overview') response = { ok: true, overview: overview() };
 else if (action === 'sa.users') response = { ok: true, users: users.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))), plans };
 else if (action === 'sa.payments') {
-  const names = Object.fromEntries(accounts.map(a => [String(a.ig_user_id), a.username]));
+  const names = Object.fromEntries(accounts.map(a => [String(a.ig_user_id), a.username]).concat(users.map(u => [u.group_id, u.email || u.username])));
   response = { ok: true, payments: payments.slice(0, 500).map(x => Object.assign({}, x, { username: names[x.account_id] || '' })) };
 } else if (action === 'sa.audit') response = { ok: true, audit: auditRows };
 else response = { ok: true, settings: settingsView() };

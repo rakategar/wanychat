@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { api, type Analytics, type Billing, type Media } from '../api'
+import { api, type Account, type Analytics, type Billing, type Media } from '../api'
+import { NeedInstagram } from '../components/Connect'
 import type { Page } from '../App'
 import { Empty, Segmented, Spinner, timeAgo, useToast } from '../components/ui'
 import { fmt } from '../plans'
@@ -7,7 +8,12 @@ import { fmt } from '../plans'
 type Range = '7' | '30' | '90'
 const DAYS = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab']
 
-export default function AnalyticsPage({ billing, go }: { billing: Billing | null; go: (p: Page) => void }) {
+export default function AnalyticsPage({ account, billing, go }: { account: Account | null; billing: Billing | null; go: (p: Page) => void }) {
+  if (!account) return <><div className="page-head"><div><h1>Analitik</h1><p>Lead, postingan terbaik, dan jam komentar teramai.</p></div></div><NeedInstagram what="Analitik lead" /></>
+  return <AnalyticsView key={account.ig_user_id} billing={billing} go={go} />
+}
+
+function AnalyticsView({ billing, go }: { billing: Billing | null; go: (p: Page) => void }) {
   const toast = useToast()
   const allowed = !!billing?.plan.analytics
   const [range, setRange] = useState<Range>('30')

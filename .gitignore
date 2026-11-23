@@ -11,9 +11,14 @@ legacy/
 
 # film promosi (aset besar, musik berlisensi)
 film/
+film2/
+film3/
 *.mp3
 
 # salinan workflow n8n cloud (python3 n8n/backup_cloud.py)
 n8n/backup/
 # dokumen legal (NPWP dll) - jangan di-commit
 dokumen/
+
+# email tangkapan SMTP lokal (n8n/dev/mailcatcher.mjs)
+n8n/dev/mail/

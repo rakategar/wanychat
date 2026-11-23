@@ -50,6 +50,16 @@ export default function BillingPage({ billing: initial, reload }: { billing: Bil
 
   useEffect(() => { load().catch((e) => toast(e.message, 'error')) }, [load, toast])
 
+  // Dari onboarding / landing: #/billing?plan=pro langsung membuka pilihan cara bayar paket itu
+  useEffect(() => {
+    const want = new URLSearchParams(window.location.hash.split('?')[1] || '').get('plan')
+    const p = want && plans?.find((x) => x.id === want && x.price > 0)
+    if (!p || !methods.length) return
+    setChoose({ kind: 'plan', id: p.id, name: 'Langganan ' + p.name, price: p.price })
+    setMethod(methods[0].id)
+    window.history.replaceState(null, '', '#/billing')
+  }, [plans, methods])
+
   // Kembali dari halaman pembayaran (DOKU/Midtrans): tunggu notifikasi pembayaran diproses (maks ±1 menit)
   useEffect(() => {
     if (!waiting) return

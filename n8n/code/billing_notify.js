@@ -9,6 +9,7 @@ for (const it of $('Baca Settings').all()) if (it.json.key) settings[it.json.key
 //#include lib_pay.js
 //#include lib_doku.js
 //#include lib_midtrans.js
+//#include lib_mail.js
 
 const out = [];
 const g = n.gateway;
@@ -43,4 +44,16 @@ out.push({ json: { kind: 'payment', payment: res.payment } });
 if (res.billing) out.push({ json: { kind: 'billing', billing: res.billing } });
 if (res.credits) out.push({ json: { kind: 'credits', credits: res.credits } });
 for (const a of res.audits) audit(...a);
+
+// Bukti bayar ke email pemilik akun Wanychat grup ini, sekali saat status pertama kali lunas
+const PAID = ['settlement', 'capture'];
+if (PAID.includes(res.payment.status) && !PAID.includes(known.status)) {
+  const owner = $('Baca User Pembayaran').all().map(i => i.json).filter(u => u && u.email && String(u.group_id) === String(known.account_id))
+    .sort((a, b) => Number(b.id) - Number(a.id))[0];
+  if (owner) {
+    const plan = plans.find(x => x.id === known.plan);
+    const itemName = known.kind === 'topup' ? (Number(known.credits) || 0).toLocaleString('id-ID') + ' kredit AI' : 'Paket ' + (plan ? plan.name : known.plan) + ' 1 bulan';
+    out.push({ json: { kind: 'mail', mail: mailInvoice(owner.email, owner.name, res.payment, itemName, res.billing ? res.billing.period_end : '') } });
+  }
+}
 return out;

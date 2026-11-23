@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { LOGIN_URL } from '../api'
 import { Brand } from '../components/ui'
 import { InstallButton } from '../components/Install'
 import { DEFAULT_PLANS, DEFAULT_TOPUPS, fmt, loadPublicCatalog, planFeatures, rupiahShort, type Plan } from '../plans'
@@ -20,7 +19,7 @@ export const FEATURES = [
   { icon: '✨', tint: 'tint-green', title: 'AI yang ngerti produkmu', desc: 'Komentar yang tidak cocok keyword? AI menjawab sesuai info produk yang kamu tulis.' },
   { icon: '⏰', tint: 'tint-pink', title: 'Follow-up otomatis', desc: 'Kirim pengingat beberapa jam kemudian ke yang sudah tekan tombol. Closing jalan terus.' },
   { icon: '🎯', tint: 'tint-purple', title: 'Pilih postingan', desc: 'Atur automasi untuk semua postingan atau hanya reels tertentu, langsung dari galeri.' },
-  { icon: '🔒', tint: 'tint-blue', title: 'Login Instagram resmi', desc: 'Pakai login resmi Instagram. Tanpa password, tanpa token, tanpa setelan teknis.' },
+  { icon: '🔒', tint: 'tint-blue', title: 'Izin resmi Instagram & TikTok', desc: 'Akun dihubungkan lewat halaman izin resmi. Wanychat tidak pernah melihat password Instagram/TikTok kamu.' },
   { icon: '📊', tint: 'tint-yellow', title: 'Analitik lead', desc: 'Lihat postingan mana yang paling banyak menghasilkan lead, jam komentar teramai, dan unduh daftar lead terpanas.' },
   { icon: '👥', tint: 'tint-green', title: 'Banyak akun, satu langganan', desc: 'Kelola beberapa akun Instagram (Pro 2, Bisnis 5) dan pindah dasbor dengan sekali klik.' },
 ]
@@ -58,7 +57,7 @@ export const FAQ = [
   },
   {
     q: 'Bisa pakai beberapa akun Instagram?',
-    a: <>Bisa. Paket <b>Pro</b> untuk 2 akun dan <b>Bisnis</b> untuk 5 akun. Tambahkan dari menu <b>Akun → Tambah akun Instagram</b> (login Instagram dengan akun itu).
+    a: <>Bisa. Paket <b>Pro</b> untuk 2 akun dan <b>Bisnis</b> untuk 5 akun (Instagram dan TikTok dihitung bersama). Tambahkan dari menu <b>Akun → Tambah Instagram / Tambah TikTok</b>.
       Tiap akun punya automasi dan dasbor sendiri, kuota paket dipakai bersama.</>,
   },
   {
@@ -78,7 +77,7 @@ export const FAQ = [
 
 function IgButton({ label, className = '' }: { label: string; className?: string }) {
   return (
-    <a className={'btn ig-btn ' + className} href={LOGIN_URL}>
+    <a className={'btn ig-btn ' + className} href="#/register">
       <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden fill="none" stroke="currentColor" strokeWidth="2.2">
         <rect x="3" y="3" width="18" height="18" rx="5" />
         <circle cx="12" cy="12" r="4.2" />
@@ -89,13 +88,13 @@ function IgButton({ label, className = '' }: { label: string; className?: string
   )
 }
 
-export default function Landing({ error, signedIn }: { error?: string; signedIn: boolean }) {
+export default function Landing({ signedIn }: { signedIn: boolean }) {
   const [plans, setPlans] = useState<Plan[]>(DEFAULT_PLANS)
   const [topups, setTopups] = useState(DEFAULT_TOPUPS)
   useEffect(() => { loadPublicCatalog().then((c) => { setPlans(c.plans); setTopups(c.topups) }) }, [])
   const cheapest = topups.reduce((a, b) => (b.price < a.price ? b : a), topups[0])
   const pro = plans.find((p) => p.id === 'pro') || plans[plans.length - 1]
-  const cta = (p: Plan) => (signedIn ? (p.price ? '#/billing' : '#/dashboard') : LOGIN_URL)
+  const cta = (p: Plan) => (signedIn ? (p.price ? '#/billing?plan=' + p.id : '#/dashboard') : '#/register')
   return (
     <div className="landing">
       <header className="lp-nav">
@@ -107,7 +106,7 @@ export default function Landing({ error, signedIn }: { error?: string; signedIn:
         </nav>
         {signedIn
           ? <a className="btn sm dark" href="#/dashboard">Buka dasbor</a>
-          : <a className="btn sm dark" href={LOGIN_URL}>Masuk</a>}
+          : <span className="row" style={{ gap: 8, flexWrap: 'nowrap' }}><a className="btn sm ghost" href="#/login">Masuk</a><a className="btn sm dark" href="#/register">Daftar</a></span>}
       </header>
 
       <main>
@@ -116,15 +115,14 @@ export default function Landing({ error, signedIn }: { error?: string; signedIn:
             <span className="badge yellow" style={{ alignSelf: 'flex-start' }}>Auto-DM Instagram · buatan Indonesia</span>
             <h1>Komentar masuk, <mark>DM terkirim</mark>, kamu tinggal closing.</h1>
             <p className="lead">
-              Wanychat membalas komentar dan DM Instagram kamu secara otomatis, 24 jam. Cukup login dengan Instagram,
-              tulis keyword, selesai. Fitur seperti ManyChat, harga mulai Rp 0.
+              Wanychat membalas komentar dan DM Instagram kamu secara otomatis, 24 jam, dan kini juga mengelola komentar TikTok.
+              Daftar, hubungkan akunmu, tulis keyword, selesai. Fitur seperti ManyChat, harga mulai Rp 0.
             </p>
-            {error && <div className="callout pink" role="alert">{error}</div>}
             <div className="row hero-cta">
-              <IgButton label="Mulai gratis dengan Instagram" />
+              <IgButton label="Mulai gratis" />
               <a className="btn" href="#harga">Lihat harga</a>
             </div>
-            <p className="hint">Untuk akun Instagram Kreator atau Bisnis. Tanpa kartu kredit. <InstallButton className="linklike" /></p>
+            <p className="hint">Daftar dengan email atau Google. Untuk akun Instagram Kreator/Bisnis dan TikTok. Tanpa kartu kredit. <InstallButton className="linklike" /></p>
           </div>
 
           <div className="phone lp-phone" aria-label="Contoh percakapan otomatis">
@@ -145,7 +143,7 @@ export default function Landing({ error, signedIn }: { error?: string; signedIn:
         </section>
 
         <section className="lp-strip">
-          {[['1', 'Login dengan Instagram'], ['2', 'Tulis keyword & pesan'], ['3', 'Biarkan Wanychat bekerja']].map(([n, t]) => (
+          {[['1', 'Daftar & hubungkan Instagram/TikTok'], ['2', 'Tulis keyword & pesan'], ['3', 'Biarkan Wanychat bekerja']].map(([n, t]) => (
             <div key={n} className="row" style={{ flexWrap: 'nowrap' }}>
               <span className="step-num">{n}</span><b>{t}</b>
             </div>
@@ -223,7 +221,7 @@ export default function Landing({ error, signedIn }: { error?: string; signedIn:
         <section className="lp-section">
           <div className="card tint-yellow lp-cta">
             <h2 style={{ margin: 0 }}>Komentar berikutnya bisa jadi pembeli.</h2>
-            <IgButton label="Mulai gratis dengan Instagram" />
+            <IgButton label="Mulai gratis sekarang" />
           </div>
         </section>
       </main>
