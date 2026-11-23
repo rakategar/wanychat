@@ -242,10 +242,18 @@ async function post<T>(url: string, headers: Record<string, string>, action: str
   return data as T
 }
 
+// Kanal dasbor yang sedang dibuka (Instagram / TikTok), diingat per browser
+const CHAN = 'wany_channel'
+export const channelPref = {
+  get: (): SocialAccount['type'] | '' => { try { const v = localStorage.getItem(CHAN); return v === 'instagram' || v === 'tiktok' ? v : '' } catch { return '' } },
+  set: (t: SocialAccount['type']) => { try { localStorage.setItem(CHAN, t) } catch { /* mode privat */ } },
+}
+
 // Pindah dasbor ke akun sosial lain milik user (sesi login yang sama)
 export async function switchAccount(a: Pick<SocialAccount, 'type' | 'id'>) {
   await api('accounts.switch', { type: a.type, id: a.id })
-  window.location.hash = a.type === 'tiktok' ? '#/tiktok' : '#/dashboard'
+  channelPref.set(a.type)
+  window.location.hash = '#/dashboard'
   window.location.reload()
 }
 

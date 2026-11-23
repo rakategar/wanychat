@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { api, connectUrl, switchAccount, type Account, type Billing, type Me, type Profile, type SocialAccount } from '../api'
 import { Confirm, Field, Spinner, Switch, useToast } from '../components/ui'
 import { InstallCard } from '../components/Install'
-import { CHANNEL } from '../components/Connect'
+import { CHANNEL, ChannelLogo } from '../components/Connect'
 
 type Sub = { subscribed_fields: string[] }
 
@@ -115,7 +115,7 @@ function InstagramSection({ account, billing, reload }: { account: Account; bill
         <div className="row" style={{ flexWrap: 'nowrap', gap: 14 }}>
           {account.avatar ? <img className="avatar" style={{ width: 56, height: 56 }} src={account.avatar} alt="" /> : <span className="avatar" style={{ width: 56, height: 56 }} />}
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 700, fontSize: 20, letterSpacing: '-0.02em' }}>📸 @{account.username}</div>
+            <div style={{ fontWeight: 700, fontSize: 20, letterSpacing: '-0.02em' }}><span className="row" style={{ gap: 8 }}><ChannelLogo type="instagram" size={22} />@{account.username}</span></div>
             <div className="muted" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{account.name}</div>
             {profile && <div className="small"><b>{profile.followers_count?.toLocaleString('id-ID')}</b> pengikut · <b>{profile.media_count}</b> post</div>}
           </div>
@@ -202,7 +202,7 @@ function LinkedAccounts({ me, reload }: { me: Me; reload: () => Promise<Me> }) {
             <div>
               <div className="ellipsis" style={{ fontWeight: 700 }}>@{a.username || a.id}</div>
               <div className="small muted">
-                {CHANNEL[a.type].icon} {CHANNEL[a.type].label}{a.current ? ' · sedang dibuka' : ''}{!a.active ? ' · tidak aktif (melebihi paket)' : ''}
+                <ChannelLogo type={a.type} size={14} /> {CHANNEL[a.type].label}{a.current ? ' · sedang dibuka' : ''}{!a.active ? ' · tidak aktif (melebihi paket)' : ''}
                 {a.token_refresh_error ? ' · perlu dihubungkan ulang' : ''}
               </div>
             </div>
@@ -218,8 +218,8 @@ function LinkedAccounts({ me, reload }: { me: Me; reload: () => Promise<Me> }) {
       {free > 0 ? (
         <>
           <div className="row">
-            <a className="btn ig-btn" href={connectUrl('instagram')}>📸 Tambah Instagram</a>
-            <a className="btn dark" href={connectUrl('tiktok')}>🎵 Tambah TikTok</a>
+            <a className="btn ig-btn" href={connectUrl('instagram')}><ChannelLogo type="instagram" size={20} /> Tambah Instagram</a>
+            <a className="btn tt-btn" href={connectUrl('tiktok')}><ChannelLogo type="tiktok" size={20} /> Tambah TikTok</a>
           </div>
           <p className="hint" style={{ margin: 0 }}>{free} slot tersisa. Kamu akan diarahkan ke halaman izin resmi. Untuk menambah akun lain di aplikasi yang sama,
             keluar dulu dari akun yang sedang login di instagram.com / tiktok.com.</p>

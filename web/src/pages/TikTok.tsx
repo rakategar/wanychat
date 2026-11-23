@@ -1,22 +1,33 @@
 import { useCallback, useEffect, useState } from 'react'
+import type { Page } from '../App'
 import { api, connectUrl, type Billing, type SocialAccount, type TikTokAccount } from '../api'
-import { Confirm, Empty, Segmented, Spinner, timeAgo, useToast } from '../components/ui'
+import { Confirm, Empty, Spinner, timeAgo, useToast } from '../components/ui'
 import { compact, ttDate, TT_SCOPES, type TtComment, type TtProfile, type TtVideo } from '../tiktok'
 import { TtActivity, TtAutomations } from './TikTokAutomations'
+import { ChannelLogo } from '../components/Connect'
 
-type Tab = 'comments' | 'automations' | 'activity'
+export type TtView = 'dashboard' | 'automations' | 'comments' | 'activity'
 
-// Kanal TikTok: hubungkan akun lewat halaman izin TikTok, lalu kelola komentar video dari Wanychat.
-export default function TikTokPage({ tiktok, accounts, billing }: { tiktok: TikTokAccount | null; accounts: SocialAccount[]; billing: Billing | null }) {
+const HEAD: Record<TtView, [string, string]> = {
+  dashboard: ['Dasbor TikTok', 'Ringkasan akun TikTok yang sedang dibuka.'],
+  automations: ['Automasi', 'Balas komentar otomatis dan sembunyikan spam di video TikTok.'],
+  comments: ['Komentar', 'Baca, balas, dan sembunyikan komentar video secara manual.'],
+  activity: ['Aktivitas', 'Semua yang dikerjakan automasi di akun TikTok ini.'],
+}
+
+// Dasbor kanal TikTok: tiap menu (Dasbor, Automasi, Komentar, Aktivitas) = satu view halaman ini
+export default function TikTokPage({ tiktok, accounts, billing, view, go }: {
+  tiktok: TikTokAccount | null; accounts: SocialAccount[]; billing: Billing | null; view: TtView; go: (p: Page) => void
+}) {
   return (
     <>
       <div className="page-head">
         <div>
-          <h1>TikTok</h1>
-          <p>Balas komentar otomatis, sembunyikan spam, dan kelola komentar video TikTok kamu.</p>
+          <h1>{HEAD[view][0]}</h1>
+          <p>{HEAD[view][1]}</p>
         </div>
       </div>
-      {tiktok ? <Connected key={tiktok.open_id} tiktok={tiktok} billing={billing} inactive={accounts.some((a) => a.type === 'tiktok' && a.id === tiktok.open_id && !a.active)} />
+      {tiktok ? <Connected tiktok={tiktok} billing={billing} view={view} go={go} inactive={accounts.some((a) => a.type === 'tiktok' && a.id === tiktok.open_id && !a.active)} />
         : <Connect full={accounts.length > 0} />}
     </>
   )
@@ -36,7 +47,7 @@ function Connect({ full }: { full: boolean }) {
           <li>Setujui izin yang diminta.</li>
           <li>Video dan komentarmu langsung tampil di sini.</li>
         </ol>
-        <div><a className="btn dark" href={connectUrl('tiktok')}>🎵 Hubungkan TikTok</a></div>
+        <div><a className="btn tt-btn" href={connectUrl('tiktok')}><ChannelLogo type="tiktok" size={20} /> Hubungkan TikTok</a></div>
         {full && <p className="hint" style={{ margin: 0 }}>Kuota akun paket dihitung gabungan Instagram + TikTok. Cek slot di menu Akun.</p>}
       </section>
       <section className="card stack">
@@ -54,9 +65,8 @@ function Connect({ full }: { full: boolean }) {
   )
 }
 
-function Connected({ tiktok, billing, inactive }: { tiktok: TikTokAccount; billing: Billing | null; inactive: boolean }) {
+function Connected({ tiktok, billing, inactive, view, go }: { tiktok: TikTokAccount; billing: Billing | null; inactive: boolean; view: TtView; go: (p: Page) => void }) {
   const toast = useToast()
-  const [tab, setTab] = useState<Tab>('automations')
   const [profile, setProfile] = useState<TtProfile | null>(null)
   const [profileError, setProfileError] = useState('')
   const [videos, setVideos] = useState<TtVideo[] | null>(null)
@@ -66,13 +76,14 @@ function Connected({ tiktok, billing, inactive }: { tiktok: TikTokAccount; billi
   const [video, setVideo] = useState<TtVideo | null>(null)
 
   useEffect(() => {
-    api<{ profile: TtProfile | null; profile_error: string }>('tiktok.status')
+    if (view === 'dashboard') api<{ profile: TtProfile | null; profile_error: string }>('tiktok.status')
       .then((r) => { setProfile(r.profile); setProfileError(r.profile_error) })
       .catch((e) => setProfileError(e.message))
+    if (view === 'activity') return
     api<{ videos: TtVideo[]; cursor: string; has_more: boolean }>('tiktok.videos')
       .then((r) => { setVideos(r.videos); setCursor(r.cursor); setMore(r.has_more) })
       .catch((e) => { setVideos([]); toast(e.message, 'error') })
-  }, [toast])
+  }, [toast, view])
 
   const loadMore = async () => {
     setLoadingMore(true)
@@ -84,7 +95,7 @@ function Connected({ tiktok, billing, inactive }: { tiktok: TikTokAccount; billi
 
   return (
     <div className="stack" style={{ gap: 20 }}>
-      <section className="card tt-profile">
+      {view === 'dashboard' && <section className="card tt-profile">
         <div className="row" style={{ flexWrap: 'nowrap', gap: 14 }}>
           {(profile?.profile_image || tiktok.avatar) ? <img className="avatar" style={{ width: 64, height: 64 }} src={profile?.profile_image || tiktok.avatar} alt="" />
             : <span className="avatar" style={{ width: 64, height: 64 }} />}
@@ -106,7 +117,7 @@ function Connected({ tiktok, billing, inactive }: { tiktok: TikTokAccount; billi
             : <span className="badge green">● Terhubung · diperpanjang otomatis</span>}
           <span className="small muted">Terhubung {timeAgo(tiktok.connected_at)}</span>
         </div>
-      </section>
+      </section>}
 
       {inactive && (
         <div className="callout pink" role="status" style={{ margin: 0 }}>
@@ -115,12 +126,23 @@ function Connected({ tiktok, billing, inactive }: { tiktok: TikTokAccount; billi
         </div>
       )}
 
-      <Segmented<Tab> value={tab} onChange={setTab} options={[
-        { value: 'automations', label: '⚡ Automasi' }, { value: 'comments', label: '💬 Komentar' }, { value: 'activity', label: '📜 Aktivitas' }]} />
+      {view === 'dashboard' && (
+        <div className="grid three">
+          {([['automations', '⚡', 'Automasi', 'Balas komentar berdasarkan keyword, sembunyikan spam, atau biarkan AI membalas.'],
+            ['comments', '💬', 'Komentar', 'Lihat komentar terbaru tiap video dan balas langsung dari sini.'],
+            ['activity', '📜', 'Aktivitas', 'Riwayat komentar yang dibalas atau disembunyikan otomatis.']] as const).map(([id, icon, title, desc]) => (
+            <button key={id} className="card stack tt-shortcut" onClick={() => go(id)}>
+              <b style={{ fontSize: 18 }}><span aria-hidden>{icon}</span> {title} →</b>
+              <span className="small muted">{desc}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {view === 'dashboard' && <p className="hint" style={{ margin: 0 }}>Komentar baru dicek berkala: tiap 30 menit di paket Gratis, tiap 5 menit di paket berbayar.</p>}
 
-      {tab === 'automations' && <TtAutomations tiktok={tiktok} billing={billing} videos={videos} />}
-      {tab === 'activity' && <TtActivity />}
-      {tab === 'comments' && <div className="tt-layout">
+      {view === 'automations' && <TtAutomations tiktok={tiktok} billing={billing} videos={videos} />}
+      {view === 'activity' && <TtActivity />}
+      {view === 'comments' && <div className="tt-layout">
         <section className="card stack">
           <h2 className="card-title" style={{ margin: 0 }}>Video</h2>
           {!videos ? <Spinner /> : videos.length === 0 ? <p className="muted" style={{ margin: 0 }}>Belum ada video.</p> : (

@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { api, connectUrl, type Me, type Onboarding as Ob, type User } from '../api'
 import { Brand, Spinner, useToast } from '../components/ui'
+import { ChannelLogo } from '../components/Connect'
 import { loadPublicCatalog, planFeatures, rupiahShort, type Plan } from '../plans'
 
 // Onboarding user baru: pilih kanal pertama (atau lihat-lihat dulu) -> untuk siapa -> tahu dari mana -> pilih paket.
@@ -85,9 +86,9 @@ export default function Onboarding({ me, onUser, onDone }: { me: Me; onUser: (u:
             <>
               <h1 className="auth-title">Hubungkan akun pertamamu</h1>
               {linked && <div className="callout yellow">Sudah terhubung: {me.accounts.map((a) => '@' + a.username).join(', ')}. Kamu bisa lanjut.</div>}
-              <ChannelCard icon="📸" title="Instagram" desc="Balas komentar jadi DM otomatis, tombol, follow-up, dan balasan AI." busy={busy === 'instagram'}
+              <ChannelCard icon={<ChannelLogo type="instagram" size={44} />} title="Instagram" desc="Balas komentar jadi DM otomatis, tombol, follow-up, dan balasan AI." busy={busy === 'instagram'}
                 onClick={() => run('instagram', async () => { await save({ channel: 'instagram', step: 'channel' }); window.location.href = connectUrl('instagram', 'onboarding') })} />
-              <ChannelCard icon="🎵" title="TikTok" desc="Kelola komentar video TikTok: balas dan sembunyikan spam dari satu tempat." busy={busy === 'tiktok'}
+              <ChannelCard icon={<ChannelLogo type="tiktok" size={44} />} title="TikTok" desc="Kelola komentar video TikTok: balas dan sembunyikan spam dari satu tempat." busy={busy === 'tiktok'}
                 onClick={() => run('tiktok', async () => { await save({ channel: 'tiktok', step: 'channel' }); window.location.href = connectUrl('tiktok', 'onboarding') })} />
               <button className="btn ghost" disabled={!!busy} onClick={() => run('explore', async () => { await save({ channel: ob.channel || 'explore', step: 'about' }); goStep('about') })}>
                 {linked ? 'Lanjut →' : 'Lihat-lihat dulu tanpa menghubungkan →'}
@@ -122,7 +123,7 @@ export default function Onboarding({ me, onUser, onDone }: { me: Me; onUser: (u:
   )
 }
 
-function ChannelCard({ icon, title, desc, onClick, busy }: { icon: string; title: string; desc: string; onClick: () => void; busy: boolean }) {
+function ChannelCard({ icon, title, desc, onClick, busy }: { icon: ReactNode; title: string; desc: string; onClick: () => void; busy: boolean }) {
   return (
     <button type="button" className="card ob-channel" onClick={onClick} disabled={busy}>
       <span className="ob-channel-icon" aria-hidden>{icon}</span>

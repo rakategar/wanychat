@@ -150,6 +150,12 @@ export default function Landing({ signedIn }: { signedIn: boolean }) {
           ))}
         </section>
 
+        <div className="lp-official">
+          <img src="/brand/instagram.png" alt="Instagram" width={26} height={26} />
+          <img src="/brand/tiktok.png" alt="TikTok" width={26} height={26} />
+          <span>Terhubung lewat <b>API resmi Instagram (Meta)</b> dan <b>TikTok API for Business</b>. Wanychat tidak pernah meminta password akunmu.</span>
+        </div>
+
         <section id="fitur" className="lp-section">
           <h2>Semua yang kamu butuhkan untuk jualan lewat komentar</h2>
           <div className="grid lp-features">
@@ -228,7 +234,7 @@ export default function Landing({ signedIn }: { signedIn: boolean }) {
 
       <footer className="lp-foot">
         <Brand />
-        <span className="small muted">© {new Date().getFullYear()} Wanychat. Tidak berafiliasi dengan Instagram, Meta, atau ManyChat.</span>
+        <span className="small muted">© {new Date().getFullYear()} Wanychat · <a href="/privacy.html">Privasi</a> · <a href="/terms.html">Syarat</a> · Tidak berafiliasi dengan Instagram, Meta, TikTok, atau ManyChat.</span>
       </footer>
     </div>
   )

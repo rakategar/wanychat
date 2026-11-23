@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api, type Account, type Billing, type EventRow, type Me, type Profile, type Rule } from '../api'
-import { CHANNEL, ConnectButtons } from '../components/Connect'
+import { CHANNEL, ChannelLogo, ConnectButtons } from '../components/Connect'
 import type { Page } from '../App'
 import { EVENT_META, Spinner, timeAgo } from '../components/ui'
 import { Meter } from './Billing'
@@ -36,7 +36,7 @@ function StartDashboard({ me, go }: { me: Me; go: (p: Page) => void }) {
           {accounts.length === 0 ? <p className="muted" style={{ margin: 0 }}>Belum ada.</p> : accounts.map((a) => (
             <div key={a.type + a.id} className="member-row">
               {a.avatar ? <img className="avatar" src={a.avatar} alt="" /> : <span className="avatar" />}
-              <div><div className="ellipsis" style={{ fontWeight: 700 }}>@{a.username || a.id}</div><div className="small muted">{CHANNEL[a.type].icon} {CHANNEL[a.type].label}</div></div>
+              <div><div className="ellipsis" style={{ fontWeight: 700 }}>@{a.username || a.id}</div><div className="small muted row" style={{ gap: 4 }}><ChannelLogo type={a.type} size={14} /> {CHANNEL[a.type].label}</div></div>
               <button className="btn sm" onClick={() => go(a.type === 'tiktok' ? 'tiktok' : 'dashboard')}>Buka</button>
             </div>
           ))}

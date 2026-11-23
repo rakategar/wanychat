@@ -54,7 +54,7 @@ export function Spinner() {
   return <span className="spin" aria-label="memuat" />
 }
 
-export function Empty(props: { icon: string; title: string; children?: ReactNode }) {
+export function Empty(props: { icon: ReactNode; title: string; children?: ReactNode }) {
   return (
     <div className="empty">
       <div className="big" aria-hidden>{props.icon}</div>
