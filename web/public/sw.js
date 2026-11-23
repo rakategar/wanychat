@@ -1,6 +1,6 @@
 // Service worker Wanychat: aplikasi bisa dipasang & dibuka offline (tampilan saja).
 // Data (/api, /sa-api, /webhook, /plans.json) TIDAK pernah di-cache: selalu langsung ke server.
-const VERSION = 'wany-v1'
+const VERSION = 'wany-v2'
 const SHELL = ['/', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png', '/favicon.png']
 
 self.addEventListener('install', (e) => {
@@ -26,8 +26,10 @@ self.addEventListener('fetch', (e) => {
     e.respondWith(
       fetch(req)
         .then((res) => {
-          const copy = res.clone()
-          caches.open(VERSION).then((c) => c.put('/', copy))
+          if (url.pathname === '/' && res.ok) {
+            const copy = res.clone()
+            caches.open(VERSION).then((c) => c.put('/', copy))
+          }
           return res
         })
         .catch(() => caches.match('/')),
