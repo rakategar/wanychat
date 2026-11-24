@@ -219,7 +219,7 @@ for (const { a } of queue) {
       const persona = (plan.persona && a.ai_persona) || settings.gemini_persona || '';
       u.ai_tokens += Math.ceil((persona.length + String(aiRule.ai_context || '').length + text.length + 400) / 4) + 80;
       out.push({ json: { kind: 'ai', account_id: oid, comment_id: cid, video_id: vid, ig_user_id: who.ig_user_id, username,
-        comment_text: text.slice(0, 500), rule_id: String(aiRule.id), rule_name: aiRule.name || '', ai_context: aiRule.ai_context || '', persona } });
+        comment_text: text.slice(0, 500), rule_id: String(aiRule.id), rule_name: aiRule.name || '', ai_context: aiRule.ai_context || '', ai_reply_all: isTrue(aiRule.ai_reply_all), persona } });
     }
     // Jumlah komentar baru dicatat setelah semua komentar baru selesai; bila terpotong, video dibaca ulang putaran berikut
     if (done && Number.isFinite(count)) st.videos[vid] = count;

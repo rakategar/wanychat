@@ -234,9 +234,15 @@ function TtRuleEditor({ initial, videos, username, billing, onCancel, onSaved }:
           {kind === 'reply' && (
             <Section n={5} title="Balasan AI" right={<Switch checked={r.ai_fallback} disabled={!canAi && !r.ai_fallback} onChange={(v) => set('ai_fallback', v)} />}>
               {!canAi ? <p className="hint"><span className="badge orange">Kreator+</span> Balasan AI tersedia mulai paket Kreator, atau beli top-up kredit AI. <a href="#/billing">Lihat paket</a></p> : r.ai_fallback ? (
+                <>
                 <Field label="Konteks produk untuk AI" hint="Komentar yang TIDAK cocok keyword dijawab AI (maks 150 karakter) berdasarkan konteks ini. Kuota AI dibagi dengan Instagram.">
                   <textarea className="input" rows={4} value={r.ai_context} onChange={(e) => set('ai_context', e.target.value)} placeholder="Nama produk, harga, cara order, link di bio, FAQ…" />
                 </Field>
+                <label className="check" style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10 }}>
+                  <input type="checkbox" checked={!!r.ai_reply_all} onChange={(e) => set('ai_reply_all', e.target.checked)} />
+                  <span>Balas semua komentar, termasuk "gamau", candaan, emoji, atau tag teman. Spam dan komentar kasar tetap dilewati.</span>
+                </label>
+                </>
               ) : <p className="hint">Nyalakan supaya pertanyaan lain di video ini dijawab otomatis oleh AI.</p>}
             </Section>
           )}

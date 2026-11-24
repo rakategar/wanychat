@@ -23,6 +23,7 @@ export interface Rule {
   ai_fallback: boolean
   ai_context: string
   hide_comment?: boolean // rule TikTok: sembunyikan komentar yang cocok
+  ai_reply_all?: boolean // AI membalas semua komentar non-keyword, bukan hanya yang perlu
   createdAt?: string
   updatedAt?: string
 }

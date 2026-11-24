@@ -241,6 +241,7 @@ for (const entry of body.entry || []) {
       out.push({ json: {
         kind: 'ai', account_id: igId, comment_id: cid, ig_user_id: uid, username, media_id: media, comment_text: text,
         rule_id: String(aiRule.id), rule_name: aiRule.name || '', ai_context: aiRule.ai_context || '',
+        ai_reply_all: aiRule.ai_reply_all === true || aiRule.ai_reply_all === 'true',
         persona,
       } });
     }

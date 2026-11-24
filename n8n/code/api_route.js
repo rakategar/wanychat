@@ -154,7 +154,7 @@ function saveTtRule(r) {
     keywords: String(r.keywords || '').trim().slice(0, 1000), match_mode: match,
     comment_replies: hide ? '' : replies.join('\n'), dm_message: '', dm_button_title: '', dm_content: '',
     followup_enabled: false, followup_delay_min: 60, followup_message: '',
-    ai_fallback: ai, ai_context: ai ? String(r.ai_context || '').trim().slice(0, 4000) : '', hide_comment: hide,
+    ai_fallback: ai, ai_context: ai ? String(r.ai_context || '').trim().slice(0, 4000) : '', ai_reply_all: ai && !!r.ai_reply_all, hide_comment: hide,
   } }];
 }
 
@@ -324,6 +324,7 @@ switch (action) {
       followup_message: String(r.followup_message || '').trim().slice(0, 1000),
       ai_fallback: !!r.ai_fallback,
       ai_context: String(r.ai_context || '').trim().slice(0, 4000),
+      ai_reply_all: !!r.ai_fallback && !!r.ai_reply_all,
       hide_comment: false,
     } }];
   }
