@@ -54,7 +54,19 @@ function kwMatch(r, text) {
   const kws = words(r.keywords);
   if (!kws.length) return false;
   if (mode === 'exact') return kws.some(k => t === k);
-  return kws.some(k => t.includes(k));
+  return kws.some(k => kwHit(t, k));
+}
+// "contains": keyword harus di awal kata ("harganya" cocok "harga", "gamau" tidak cocok "mau")
+// dan tidak didahului kata penyangkal ("ga mau", "nggak minat") — itu dibiarkan ke AI.
+const NEG = new Set(['ga', 'gak', 'gk', 'g', 'nga', 'ngga', 'nggak', 'enggak', 'engga', 'ndak', 'nda', 'tidak', 'tdk', 'tak', 'kagak', 'kaga', 'ogah', 'males', 'malas', 'jangan', 'belum', 'blm', 'gamau', 'nggamau', 'no', 'not']);
+function kwHit(t, k) {
+  const re = new RegExp('(^|[^\\p{L}\\p{N}])' + k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gu');
+  let m;
+  while ((m = re.exec(t))) {
+    const before = t.slice(0, m.index + m[1].length).match(/[\p{L}\p{N}]+/gu) || [];
+    if (!NEG.has(before[before.length - 1])) return true;
+  }
+  return false;
 }
 const secs = (t) => { const n = Number(t); return Number.isFinite(n) ? (n > 1e12 ? Math.floor(n / 1000) : n) : Math.floor(new Date(t).getTime() / 1000) || 0; };
 

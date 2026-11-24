@@ -117,7 +117,19 @@ function kwMatch(r, text) {
   const kws = words(r.keywords);
   if (!kws.length) return false;
   if (mode === 'exact') return kws.some(k => t === k);
-  return kws.some(k => t.includes(k));
+  return kws.some(k => kwHit(t, k));
+}
+// "contains": keyword harus di awal kata ("harganya" cocok "harga", "gamau" tidak cocok "mau")
+// dan tidak didahului kata penyangkal ("ga mau", "nggak minat") — itu dibiarkan ke AI.
+const NEG = new Set(['ga', 'gak', 'gk', 'g', 'nga', 'ngga', 'nggak', 'enggak', 'engga', 'ndak', 'nda', 'tidak', 'tdk', 'tak', 'kagak', 'kaga', 'ogah', 'males', 'malas', 'jangan', 'belum', 'blm', 'gamau', 'nggamau', 'no', 'not']);
+function kwHit(t, k) {
+  const re = new RegExp('(^|[^\\p{L}\\p{N}])' + k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gu');
+  let m;
+  while ((m = re.exec(t))) {
+    const before = t.slice(0, m.index + m[1].length).match(/[\p{L}\p{N}]+/gu) || [];
+    if (!NEG.has(before[before.length - 1])) return true;
+  }
+  return false;
 }
 function buttonFor(rule) {
   if (!rule.dm_button_title || !rule.dm_content) return undefined;
@@ -190,7 +202,9 @@ for (const entry of body.entry || []) {
 
     log({ type: 'comment_in', uid, username, ref: cid, media, text });
     u.comments++; u.changed = true;
-    const cand = rules.filter(r => (r.channel || 'comment') === 'comment' && postMatch(r, media));
+    const cand = rules.filter(r => (r.channel || 'comment') === 'comment' && postMatch(r, media))
+      // automasi khusus post didahulukan di atas automasi "semua post"
+      .sort((a, b) => Number(String(a.post_ids || '*').includes('*')) - Number(String(b.post_ids || '*').includes('*')));
     const rule = cand.find(r => kwMatch(r, text));
 
     if (rule) {
