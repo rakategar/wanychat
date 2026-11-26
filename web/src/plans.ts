@@ -11,6 +11,7 @@ export interface Plan {
   accounts: number
   analytics: boolean
   watermark: boolean
+  posts?: number // posting multi-platform per bulan (per akun tujuan), 0 = tanpa batas
 }
 
 export interface Topup {
@@ -20,10 +21,10 @@ export interface Topup {
 }
 
 export const DEFAULT_PLANS: Plan[] = [
-  { id: 'free', name: 'Gratis', price: 0, dm: 100, ai: 0, rules: 3, followup: false, persona: false, accounts: 1, analytics: false, watermark: true },
-  { id: 'kreator', name: 'Kreator', price: 49000, dm: 1000, ai: 50, rules: 0, followup: true, persona: false, accounts: 1, analytics: false, watermark: false },
-  { id: 'pro', name: 'Pro', price: 99000, dm: 5000, ai: 1000, rules: 0, followup: true, persona: true, accounts: 2, analytics: false, watermark: false },
-  { id: 'bisnis', name: 'Bisnis', price: 249000, dm: 20000, ai: 5000, rules: 0, followup: true, persona: true, accounts: 5, analytics: true, watermark: false },
+  { id: 'free', name: 'Gratis', price: 0, dm: 100, ai: 0, rules: 3, followup: false, persona: false, accounts: 1, analytics: false, watermark: true, posts: 10 },
+  { id: 'kreator', name: 'Kreator', price: 49000, dm: 1000, ai: 50, rules: 0, followup: true, persona: false, accounts: 1, analytics: false, watermark: false, posts: 60 },
+  { id: 'pro', name: 'Pro', price: 99000, dm: 5000, ai: 1000, rules: 0, followup: true, persona: true, accounts: 2, analytics: false, watermark: false, posts: 300 },
+  { id: 'bisnis', name: 'Bisnis', price: 249000, dm: 20000, ai: 5000, rules: 0, followup: true, persona: true, accounts: 5, analytics: true, watermark: false, posts: 0 },
 ]
 
 export const DEFAULT_TOPUPS: Topup[] = [

@@ -134,6 +134,8 @@ export const EVENT_META: Record<string, { label: string; color: string; icon: st
   tt_ai_reply: { label: 'Balasan AI', color: 'green', icon: '✨' },
   tt_hide: { label: 'Disembunyikan', color: 'orange', icon: '🙈' },
   tt_error: { label: 'Koneksi TikTok', color: 'red', icon: '⚠️' },
+  post_published: { label: 'Posting terbit', color: 'green', icon: '📤' },
+  post_failed: { label: 'Posting gagal', color: 'red', icon: '📤' },
 }
 
 export function Brand({ size = 20 }: { size?: number }) {

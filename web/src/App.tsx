@@ -12,12 +12,13 @@ import BillingPage from './pages/Billing'
 import SettingsPage from './pages/Settings'
 import AnalyticsPage from './pages/Analytics'
 import TikTokPage from './pages/TikTok'
+import PostingPage from './pages/Posting'
 
 // Dasbor superadmin dimuat terpisah: tidak ikut terunduh oleh pengguna biasa
 const AdminApp = lazy(() => import('./admin/AdminApp'))
 
 // 'tiktok' = alamat lama (redirect OAuth TikTok): membuka dasbor kanal TikTok
-export type Page = 'dashboard' | 'automations' | 'comments' | 'activity' | 'analytics' | 'billing' | 'settings' | 'tiktok'
+export type Page = 'dashboard' | 'automations' | 'comments' | 'activity' | 'analytics' | 'billing' | 'settings' | 'tiktok' | 'posting'
 type Channel = SocialAccount['type'] | 'none'
 type NavItem = { id: Page; label: string; icon: string }
 
@@ -25,23 +26,25 @@ type NavItem = { id: Page; label: string; icon: string }
 const CHANNEL_NAV: Record<Channel, NavItem[]> = {
   instagram: [
     { id: 'dashboard', label: 'Dasbor', icon: '🏠' },
+    { id: 'posting', label: 'Posting', icon: '📤' },
     { id: 'automations', label: 'Automasi', icon: '⚡' },
     { id: 'activity', label: 'Aktivitas', icon: '📜' },
     { id: 'analytics', label: 'Analitik', icon: '📊' },
   ],
   tiktok: [
     { id: 'dashboard', label: 'Dasbor', icon: '🏠' },
+    { id: 'posting', label: 'Posting', icon: '📤' },
     { id: 'automations', label: 'Automasi', icon: '⚡' },
     { id: 'comments', label: 'Komentar', icon: '💬' },
     { id: 'activity', label: 'Aktivitas', icon: '📜' },
   ],
-  none: [{ id: 'dashboard', label: 'Dasbor', icon: '🏠' }],
+  none: [{ id: 'dashboard', label: 'Dasbor', icon: '🏠' }, { id: 'posting', label: 'Posting', icon: '📤' }],
 }
 const ACCOUNT_NAV: NavItem[] = [
   { id: 'billing', label: 'Langganan', icon: '💳' },
   { id: 'settings', label: 'Akun', icon: '👤' },
 ]
-const PAGES: Page[] = ['dashboard', 'automations', 'comments', 'activity', 'analytics', 'billing', 'settings', 'tiktok']
+const PAGES: Page[] = ['dashboard', 'automations', 'comments', 'activity', 'analytics', 'billing', 'settings', 'tiktok', 'posting']
 const AUTH_MODES: AuthMode[] = ['login', 'register', 'verify', 'forgot', 'reset']
 
 // Hash route: "" / "#/" = landing (tanpa panggilan API), "#/login" dst = halaman akun, "#/onboarding" = user baru,
@@ -103,8 +106,9 @@ function UserApp() {
     if (params.get('error') && isPanel(path)) toast(params.get('error')!, 'error')
     if (params.get('linked') === 'instagram') channelPref.set('instagram')
     if (params.get('linked') === 'instagram') toast(params.get('claimed') === '1' ? 'Instagram terhubung. Automasi & data lamanya ikut masuk 🎉' : 'Instagram terhubung 🎉')
-    if (params.get('connected') === '1') toast('TikTok terhubung 🎉')
-    if (isPanel(path) && params.size && !params.has('paid') && !params.has('plan')) window.history.replaceState(null, '', '#/' + path)
+    if (params.get('connected') === '1') toast(path === 'posting' ? 'Izin posting TikTok tersimpan 🎉' : 'TikTok terhubung 🎉')
+    // ?post= di #/posting adalah alamat halaman status, bukan pesan sekali jalan
+    if (isPanel(path) && params.size && !params.has('paid') && !params.has('plan') && !params.has('post')) window.history.replaceState(null, '', '#/' + path)
   }, [toast])
 
   const checkAuth = useCallback(() => {
@@ -233,6 +237,7 @@ function UserApp() {
           {page === 'activity' && <Activity account={account} />}
           {page === 'analytics' && <AnalyticsPage account={account} billing={billing} go={go} />}
         </>}
+        {page === 'posting' && <PostingPage me={me} params={params} reload={loadMe} />}
         {page === 'billing' && <BillingPage billing={billing} reload={loadMe} />}
         {page === 'settings' && <SettingsPage me={me} reload={loadMe} logout={logout} />}
       </main>

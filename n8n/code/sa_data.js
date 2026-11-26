@@ -136,7 +136,7 @@ function overview() {
   };
 }
 
-const SECRET = ['app_secret', 'google_client_secret', 'tiktok_secret', 'mail_secret', 'doku_secret_key', 'midtrans_server_key', 'midtrans_sb_server_key', 'midtrans_signature_key', 'midtrans_sb_signature_key'];
+const SECRET = ['app_secret', 'google_client_secret', 'tiktok_secret', 'mail_secret', 'doku_secret_key', 'midtrans_server_key', 'midtrans_sb_server_key', 'midtrans_signature_key', 'midtrans_sb_signature_key', 's3_access_key', 's3_secret_key'];
 // Setelan Midtrans versi langganan lama (tidak dipakai lagi)
 const LEGACY = /^midtrans_(payments|fee_pct|fee_flat|client_key)$/;
 const HIDDEN = /^sa_/;

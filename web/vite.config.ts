@@ -15,6 +15,7 @@ const to = (path?: string): ProxyOptions => ({
 })
 const proxy = {
   '/api': to('/webhook/wany-api'),
+  '/post-api': to('/webhook/wany-post'),
   '/auth': to('/webhook/wany-auth'),
   '/sa-api': to('/webhook/wany-sa'),
   '/plans.json': to('/webhook/wany-plans'),

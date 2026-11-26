@@ -215,6 +215,15 @@ const EDITABLE = {
   tiktok_secret: { secret: true, ok: (v) => /^[a-f0-9]{20,80}$/i.test(v) },
   mail_from: { ok: (v) => /^[^\s@<>"]+@[^\s@<>"]+\.[a-z]{2,}$/i.test(v) },
   mail_from_name: { ok: (v) => v.length >= 1 && v.length <= 60 && !/["<>]/.test(v) },
+  // Penyimpanan media posting (Cloudflare R2 / S3-compatible)
+  s3_endpoint: { ok: (v) => v === '' || /^https:\/\/[a-z0-9.-]+(:\d+)?\/?$/i.test(v) },
+  s3_region: { ok: (v) => /^[a-z0-9-]{2,30}$/.test(v) },
+  s3_bucket: { ok: (v) => v === '' || /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(v) },
+  s3_access_key: { secret: true, ok: (v) => /^[\w]{16,128}$/.test(v) },
+  s3_secret_key: { secret: true, ok: (v) => /^[\w\/+=]{16,128}$/.test(v) },
+  media_public_base: { ok: (v) => v === '' || /^https:\/\/[a-z0-9.-]+(\/[\w.-]+)*\/?$/i.test(v) },
+  post_max_video_mb: { ok: NUM(10, 300) },
+  extra_origins: { ok: (v) => v === '' || v.split(',').every(x => /^https:\/\/[a-z0-9.-]+$/i.test(x.trim())) },
 };
 
 // ID grup langganan: akun Wanychat baru (u_...) atau grup lama berbasis ID Instagram
@@ -234,9 +243,10 @@ function validPlans(list) {
     const item = {
       id, name: String(x.name || '').trim().slice(0, 30), price: n(x.price), dm: n(x.dm), ai: n(x.ai), rules: n(x.rules),
       followup: !!x.followup, persona: !!x.persona, accounts: n(x.accounts ?? 1), analytics: !!x.analytics, watermark: !!x.watermark,
+      ...(x.posts !== undefined && x.posts !== '' ? { posts: n(x.posts) } : {}),
     };
     if (!item.name) return 'Nama paket ' + id + ' kosong';
-    for (const [k, max] of [['price', 100000000], ['dm', 10000000], ['ai', 10000000], ['rules', 1000]]) {
+    for (const [k, max] of [['price', 100000000], ['dm', 10000000], ['ai', 10000000], ['rules', 1000]].concat('posts' in item ? [['posts', 100000]] : [])) {
       if (!(item[k] >= 0 && item[k] <= max)) return k + ' paket ' + id + ' tidak valid';
     }
     if (!(item.accounts >= 1 && item.accounts <= 20)) return 'Jumlah akun paket ' + id + ' harus 1-20';

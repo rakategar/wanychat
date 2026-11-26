@@ -64,7 +64,24 @@ OTP_COLS = {"email": "string", "purpose": "string", "code_hash": "string", "expi
 TT_COLS = {
     "open_id": "string", "username": "string", "display_name": "string", "avatar": "string", "access_token": "string",
     "token_expires_at": "dateTime", "refresh_token": "string", "refresh_expires_at": "dateTime",
-    "token_refresh_error": "string", "owner_id": "string", "connected_at": "dateTime",
+    "token_refresh_error": "string", "owner_id": "string", "connected_at": "dateTime", "scope": "string",
+}
+# Posting multi-platform: posting (isi), target (satu baris per akun tujuan, diproses worker), media (file di bucket R2)
+POST_COLS = {"post_id": "string", "owner_id": "string", "user_id": "string", "kind": "string", "caption": "string", "media": "string",
+             "options": "string", "scheduled_at": "dateTime", "client_ref": "string"}
+TARGET_COLS = {
+    "post_id": "string", "owner_id": "string", "platform": "string", "account_id": "string", "username": "string", "kind": "string",
+    "caption": "string", "media": "string", "options": "string", "status": "string", "container_id": "string", "children": "string",
+    "publish_id": "string", "media_id": "string", "permalink": "string", "error": "string", "error_stage": "string",
+    "retryable": "boolean", "tries": "number", "scheduled_at": "dateTime", "next_at": "dateTime", "started_at": "dateTime",
+    "done_at": "dateTime", "note": "string",
+}
+TARGET_MUTABLE = ["status", "container_id", "children", "publish_id", "media_id", "permalink", "error", "error_stage", "retryable",
+                  "tries", "next_at", "started_at", "done_at", "note"]
+MEDIA_COLS = {
+    "media_id": "string", "owner_id": "string", "kind": "string", "mime": "string", "obj_key": "string", "size": "number",
+    "width": "number", "height": "number", "duration": "number", "fps": "number", "video_codec": "string", "audio_codec": "string",
+    "status": "string", "verified": "boolean", "post_id": "string", "expires_at": "dateTime", "note": "string",
 }
 SESSION_COLS = {"token": "string", "user_id": "string", "ig_user_id": "string", "tt_open_id": "string",
                 "expires_at": "dateTime"}
@@ -888,9 +905,105 @@ def superadmin():
     return workflow("WanySuperAdmin01", "Wanychat · Superadmin", n, c)
 
 
+# ---------------------------------------------------------------- Posting multi-platform (Instagram + TikTok)
+def posting():
+    sess = "$('Cari Sesi').first().json"
+    grp_js = "String($('Baca User').first().json.group_id || $('Baca User').first().json.uid || 'none')"
+    grp = "={{ " + grp_js + " }}"
+    first = "$('Proses Posting').first().json"
+    first_resp = "={{ " + first + ".response }}"
+    first_status = "{{ " + first + ".status || 200 }}"
+    media_vals = lambda src: {c: "={{ " + src + "." + c + " }}" for c in MEDIA_COLS}
+    split = lambda name, pos, field: node(name, "n8n-nodes-base.code", 2, pos, {"mode": "runOnceForAllItems", "jsCode":
+        "// Satu item per baris; item kosong supaya rantai tetap jalan sampai node Balas\n"
+        "const rows = $('Proses Posting').first().json.%s || [];\n"
+        "return (rows.length ? rows : [{ media_id: 'none', id: -1 }]).map(json => ({ json }));" % field})
+    n = [
+        webhook("Webhook Posting", [0, 300], "POST", "wany-post", "responseNode"),
+        dt_get("Baca Settings", [220, 300], "settings", alwaysOutputData=True, executeOnce=True),
+        dt_get("Cari Sesi", [440, 300], "sessions", filters=[("token", "eq", cookie_hash("Webhook Posting", "wany_session"))],
+               alwaysOutputData=True, executeOnce=True),
+        dt_get("Baca User", [660, 300], "users", filters=[("uid", "eq", "={{ " + sess + ".user_id || 'none' }}")],
+               alwaysOutputData=True, executeOnce=True),
+        dt_get("Baca Akun Grup", [880, 140], "accounts", filters=[("owner_id", "eq", grp), ("ig_user_id", "eq", grp)],
+               match="any", alwaysOutputData=True, executeOnce=True),
+        dt_get("Baca TikTok Grup", [880, 300], "tt_accounts", filters=[("owner_id", "eq", grp)], alwaysOutputData=True, executeOnce=True),
+        dt_get("Baca Billing", [880, 460], "billing", filters=[("account_id", "eq", grp)], alwaysOutputData=True, executeOnce=True),
+        dt_get("Baca Posting", [1100, 140], "posts", filters=[("owner_id", "eq", grp)], order=("createdAt", "DESC"), limit=200,
+               alwaysOutputData=True, executeOnce=True),
+        dt_get("Baca Target", [1100, 300], "post_targets", filters=[("owner_id", "eq", grp)], order=("createdAt", "DESC"), limit=2000,
+               alwaysOutputData=True, executeOnce=True),
+        dt_get("Baca Media", [1100, 460], "media", filters=[("owner_id", "eq", grp)], order=("createdAt", "DESC"), limit=300,
+               alwaysOutputData=True, executeOnce=True),
+        code_node("Proses Posting", [1320, 300], "post_route.js"),
+        switch("Rute Posting", [1540, 300], "route", ["deny", "direct", "media_insert", "media_update", "post_create", "targets_update", "tt_update"]),
+        respond("Tolak", [1800, -100], "={{ $json.response }}", "401", executeOnce=True),
+        respond("Balas", [1800, 60], "={{ $json.response }}", "{{ $json.status || 200 }}", executeOnce=True),
+        dt_write("Simpan Media", [1800, 220], "media", "insert", media_vals("$json.media"), types=MEDIA_COLS, executeOnce=True),
+        respond("Balas Media", [2020, 220], first_resp, executeOnce=True),
+        dt_write("Update Media", [1800, 380], "media", "update", media_vals("$json.media"), types=MEDIA_COLS,
+                 filters=[("media_id", "eq", "={{ $json.media.media_id }}")], executeOnce=True, alwaysOutputData=True),
+        respond("Balas Update Media", [2020, 380], first_resp, first_status, executeOnce=True),
+        dt_write("Simpan Posting", [1800, 540], "posts", "insert", {c: "={{ $json.post." + c + " }}" for c in POST_COLS}, types=POST_COLS,
+                 executeOnce=True),
+        split("Pecah Target", [2020, 540], "targets"),
+        dt_write("Simpan Target", [2240, 540], "post_targets", "insert", {c: "={{ $json." + c + " }}" for c in TARGET_COLS}, types=TARGET_COLS),
+        split("Pecah Media Posting", [2460, 540], "media_rows"),
+        dt_write("Kunci Media", [2680, 540], "media", "update", media_vals("$json"), types=MEDIA_COLS,
+                 filters=[("media_id", "eq", "={{ $json.media_id }}")], alwaysOutputData=True),
+        respond("Balas Posting", [2900, 540], first_resp, executeOnce=True),
+        split("Pecah Update Target", [1800, 700], "updates"),
+        dt_write("Update Target", [2020, 700], "post_targets", "update", {c: "={{ $json." + c + " }}" for c in TARGET_MUTABLE},
+                 types=TARGET_COLS, filters=[("id", "eq", "={{ $json.id }}")], alwaysOutputData=True),
+        split("Pecah Media Retry", [2240, 700], "media_rows"),
+        dt_write("Perpanjang Media", [2460, 700], "media", "update", {"expires_at": "={{ $json.expires_at }}"}, types=MEDIA_COLS,
+                 filters=[("media_id", "eq", "={{ $json.media_id }}")], alwaysOutputData=True),
+        respond("Balas Update Target", [2680, 700], first_resp, executeOnce=True),
+        tt_write("Simpan TikTok", [1800, 860], "$json.tt"),
+
+        # --- Worker antrean: tiap 2 menit, batas 100 detik -> putaran tidak pernah tumpang tindih
+        node("Setiap 2 Menit", "n8n-nodes-base.scheduleTrigger", 1.2, [0, 1200],
+             {"rule": {"interval": [{"field": "minutes", "minutesInterval": 2}]}}),
+        dt_get("Baca Settings Worker", [220, 1200], "settings", alwaysOutputData=True, executeOnce=True),
+        dt_get("Baca Target Aktif", [440, 1200], "post_targets", filters=[("status", "eq", "queued"), ("status", "eq", "processing")],
+               match="any", alwaysOutputData=True, executeOnce=True),
+        dt_get("Baca Akun IG", [660, 1200], "accounts", alwaysOutputData=True, executeOnce=True),
+        dt_get("Baca Akun TikTok", [880, 1200], "tt_accounts", alwaysOutputData=True, executeOnce=True),
+        dt_get("Baca Media Kedaluwarsa", [1100, 1200], "media", filters=[("expires_at", "lt", "={{ $now.toISO() }}")], limit=200,
+               alwaysOutputData=True, executeOnce=True),
+        code_node("Proses Antrean", [1320, 1200], "post_worker.js"),
+        switch("Rute Antrean", [1540, 1200], "kind", ["target", "tt", "media", "log"]),
+        dt_write("Simpan Status Target", [1800, 1060], "post_targets", "update", {c: "={{ $json." + c + " }}" for c in TARGET_MUTABLE},
+                 types=TARGET_COLS, filters=[("id", "eq", "={{ $json.id }}")]),
+        tt_write("Simpan Token TikTok", [1800, 1200], "$json.tt"),
+        dt_write("Tandai Media Terhapus", [1800, 1340], "media", "update", {"status": "={{ $json.status }}"}, types=MEDIA_COLS,
+                 filters=[("media_id", "eq", "={{ $json.media_id }}")]),
+        dt_write("Simpan Log", [1800, 1480], "events", "insert", LOG_VALUES),
+    ]
+    # Worker membaca "Baca Settings" dengan nama node sendiri
+    for x in n:
+        if x["name"] == "Proses Antrean":
+            x["parameters"]["jsCode"] = x["parameters"]["jsCode"].replace("$('Baca Settings')", "$('Baca Settings Worker')")
+    c = {}
+    chain(c, "Webhook Posting", "Baca Settings", "Cari Sesi", "Baca User", "Baca Akun Grup", "Baca TikTok Grup", "Baca Billing",
+          "Baca Posting", "Baca Target", "Baca Media", "Proses Posting", "Rute Posting")
+    for i, t in enumerate(["Tolak", "Balas", "Simpan Media", "Update Media", "Simpan Posting", "Pecah Update Target", "Simpan TikTok"]):
+        connect(c, "Rute Posting", t, i)
+    chain(c, "Simpan Media", "Balas Media")
+    chain(c, "Update Media", "Balas Update Media")
+    chain(c, "Simpan Posting", "Pecah Target", "Simpan Target", "Pecah Media Posting", "Kunci Media", "Balas Posting")
+    chain(c, "Pecah Update Target", "Update Target", "Pecah Media Retry", "Perpanjang Media", "Balas Update Target")
+    chain(c, "Setiap 2 Menit", "Baca Settings Worker", "Baca Target Aktif", "Baca Akun IG", "Baca Akun TikTok", "Baca Media Kedaluwarsa",
+          "Proses Antrean", "Rute Antrean")
+    for i, t in enumerate(["Simpan Status Target", "Simpan Token TikTok", "Tandai Media Terhapus", "Simpan Log"]):
+        connect(c, "Rute Antrean", t, i)
+    # Eksekusi sukses tidak disimpan (worker jalan 720x/hari); batas waktu < interval supaya tidak tumpang tindih
+    return workflow("WanyPosting00001", "Wanychat · Posting", n, c, saveDataSuccessExecution="none", executionTimeout=100)
+
+
 if __name__ == "__main__":
     DIST.mkdir(parents=True, exist_ok=True)
-    for wf in (engine(), scheduler(), admin_api(), auth(), tiktok(), tiktok_auto(), billing(), superadmin()):
+    for wf in (engine(), scheduler(), admin_api(), auth(), tiktok(), tiktok_auto(), billing(), superadmin(), posting()):
         path = DIST / (wf["id"] + ".json")
         path.write_text(json.dumps(wf, indent=2, ensure_ascii=False))
         print("ditulis", path.relative_to(ROOT), "-", len(wf["nodes"]), "node")

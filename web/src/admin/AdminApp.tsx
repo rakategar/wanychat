@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { ApiError, saApi } from '../api'
 import { Brand, Confirm, Field, Spinner, Switch, timeAgo, useToast } from '../components/ui'
-import { fmt, rupiah, type Plan } from '../plans'
+import { DEFAULT_PLANS, fmt, rupiah, type Plan } from '../plans'
 import type { AuditRow, Overview, PaymentRow, SettingsView, UserRow } from './types'
 
 type Tab = 'overview' | 'users' | 'payments' | 'plans' | 'settings' | 'security'
@@ -467,13 +467,13 @@ function PlansTab({ guard }: { guard: Guard }) {
     setBusy(true)
     try { await saApi('sa.plans.save', { plans }); toast('Paket tersimpan'); load() } catch (e) { guard(e) } finally { setBusy(false) }
   }
-  const NUMS: [keyof Plan, string, string][] = [['price', 'Harga / bulan (Rp)', ''], ['dm', 'DM / bulan', ''], ['ai', 'Balasan AI / bulan', '0 = tanpa AI'], ['rules', 'Maks automasi', '0 = tanpa batas'], ['accounts', 'Akun Instagram', 'kuota dibagi bersama']]
+  const NUMS: [keyof Plan, string, string][] = [['price', 'Harga / bulan (Rp)', ''], ['dm', 'DM / bulan', ''], ['ai', 'Balasan AI / bulan', '0 = tanpa AI'], ['rules', 'Maks automasi', '0 = tanpa batas'], ['accounts', 'Akun Instagram', 'kuota dibagi bersama'], ['posts', 'Posting / bulan', 'per akun tujuan; 0 = tanpa batas']]
   return (
     <>
       <div className="page-head">
         <div><h1>Paket & harga</h1><p>Berlaku langsung untuk kuota, checkout, dan halaman harga (cache landing ±15 menit).</p></div>
         <div className="row">
-          <button className="btn" onClick={() => setPlans([...plans, { id: 'baru' + plans.length, name: 'Paket baru', price: 149000, dm: 10000, ai: 2000, rules: 0, followup: true, persona: true, accounts: 3, analytics: false, watermark: false }])}>+ Paket</button>
+          <button className="btn" onClick={() => setPlans([...plans, { id: 'baru' + plans.length, name: 'Paket baru', price: 149000, dm: 10000, ai: 2000, rules: 0, followup: true, persona: true, accounts: 3, analytics: false, watermark: false, posts: 300 }])}>+ Paket</button>
           <button className="btn dark" disabled={busy} onClick={save}>{busy ? <Spinner /> : 'Simpan paket'}</button>
         </div>
       </div>
@@ -490,7 +490,7 @@ function PlansTab({ guard }: { guard: Guard }) {
             </Field>
             {NUMS.map(([k, label, hint]) => (
               <Field key={k} label={label} hint={hint || undefined}>
-                <input className="input" type="number" min={0} value={p[k] as number} disabled={k === 'price' && p.id === 'free'} onChange={(e) => set(i, k, Number(e.target.value))} />
+                <input className="input" type="number" min={0} value={(k === 'posts' ? p.posts ?? DEFAULT_PLANS.find((d) => d.id === p.id)?.posts ?? 10 : p[k]) as number} disabled={k === 'price' && p.id === 'free'} onChange={(e) => set(i, k, Number(e.target.value))} />
               </Field>
             ))}
             <Switch checked={p.followup} onChange={(v) => set(i, 'followup', v)} label="Follow-up DM" />
@@ -526,6 +526,15 @@ const GROUPS: { title: string; desc: string; fields: Def[] }[] = [
   { title: 'TikTok', desc: 'TikTok API for Business → My Apps → Wanychat (Accounts API).', fields: [
     { key: 'tiktok_app_id', label: 'App ID' },
     { key: 'tiktok_secret', label: 'Secret', kind: 'secret' },
+  ] },
+  { title: 'Media posting (R2)', desc: 'Bucket Cloudflare R2 untuk foto/video posting multi-platform. Browser mengunggah langsung ke bucket; Instagram & TikTok mengambil file dari URL publik.', fields: [
+    { key: 's3_endpoint', label: 'Endpoint S3', hint: 'https://<ACCOUNT_ID>.r2.cloudflarestorage.com' },
+    { key: 's3_region', label: 'Region', hint: 'R2: auto' },
+    { key: 's3_bucket', label: 'Nama bucket', hint: 'mis. wanychat-media' },
+    { key: 's3_access_key', label: 'Access Key ID', kind: 'secret' },
+    { key: 's3_secret_key', label: 'Secret Access Key', kind: 'secret' },
+    { key: 'media_public_base', label: 'URL publik media', hint: 'Custom domain bucket, mis. https://media.remot.in (domain ini yang diverifikasi di TikTok).' },
+    { key: 'post_max_video_mb', label: 'Ukuran video maksimal (MB)', kind: 'number', hint: '10-300. Instagram menerima maksimal 300 MB.' },
   ] },
   { title: 'Email (SMTP)', desc: 'Pengirim email OTP, invoice, dan promosi. Server SMTP diatur di kredensial n8n "Wanychat SMTP".', fields: [
     { key: 'mail_from', label: 'Alamat pengirim', hint: 'Harus mailbox yang dipakai kredensial SMTP, mis. contact@remot.in.' },

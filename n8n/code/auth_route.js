@@ -24,7 +24,8 @@ const fail = (error, status, extra) => out('direct', Object.assign({ ok: false, 
 
 // Tolak permintaan lintas situs (CSRF): browser selalu mengirim Origin untuk POST fetch
 const origin = String(headers.origin || '');
-if (origin && base && origin !== base) return fail('Permintaan ditolak', 403);
+const extraOrigins = String(settings.extra_origins || '').split(',').map(s => s.trim().replace(/\/$/, '')).filter(Boolean);
+if (origin && base && origin !== base && !extraOrigins.includes(origin)) return fail('Permintaan ditolak', 403);
 // Batas per IP + batas global (IP dari header bisa dipalsukan bila webhook n8n dipanggil langsung tanpa Vercel)
 if (limit.over('ip:' + ip, 40) || limit.over('all', 600)) return fail('Terlalu banyak percobaan. Coba lagi dalam 15 menit.', 429);
 limit.hit('ip:' + ip);

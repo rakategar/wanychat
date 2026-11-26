@@ -16,7 +16,9 @@ DOKU ─────────▶ /webhook/wany-doku                          
                                                 Billing: pending DOKU order check + downgrade at 04.00
 Data: n8n Data Tables wany_settings, wany_rules, wany_contacts, wany_events, wany_followups, wany_accounts, wany_sessions,
       wany_billing, wany_payments, wany_usage, wany_admin_sessions, wany_audit,
-      wany_users (Wanychat accounts), wany_otp (email codes, hash only), wany_tt_accounts (TikTok)
+      wany_users (Wanychat accounts), wany_otp (email codes, hash only), wany_tt_accounts (TikTok),
+      wany_posts, wany_post_targets, wany_media (multi-platform posting)
+Media: Cloudflare R2 bucket (S3 API). The browser uploads straight to the bucket with a signed PUT URL; IG/TikTok fetch from media_public_base
 Email: n8n "Send Email" nodes with SMTP credential "Wanychat SMTP" (Hostinger contact@remot.in): OTP, invoice, promo
 AI:   DeepSeek (deepseek-flash) via n8n credential
 ```
@@ -37,6 +39,26 @@ The landing page makes no API calls. Every call is one n8n execution, so only pa
   - Unlinking a TikTok account deletes its rules and logs, so a later owner inherits nothing.
 - New users go through onboarding (`#/onboarding`: first channel or explore → for whom → heard from → plan, free allowed) before the panel.
 - Auth security: scrypt passwords, generic login errors, per-email (8) / per-IP (40) / global (600) attempts per 15 min, 6-digit OTP (10 min, 5 tries, 60 s resend throttle), password reset revokes all sessions, Origin check on every POST.
+
+## Multi-platform posting (`#/posting`)
+One photo, video, or carousel goes to several Instagram and TikTok accounts of the same Wanychat account. Workflow `Wanychat · Posting` (WanyPosting00001):
+- **API** `/post-api` → `/webhook/wany-post` (`code/post_route.js`, same session/group checks as the Admin API):
+  - `post.config`: destinations + publish permission (IG checked live via `content_publishing_limit`; TikTok via the stored `scope`) + per-account TikTok limits (`/business/video/settings/`).
+  - `media.start`: media row + signed PUT URL (content-type and size are signed). Then the browser uploads.
+  - `media.finish`: n8n reads the first bytes from the bucket and checks magic bytes, JPEG size, and MP4 duration/resolution/codec/fps. Server values override what the browser claimed; non-media files are deleted.
+  - `post.create`: per-platform format rules (`code/lib_post.js`), plan `posts`/month quota, TikTok 15 posts/24 h, IG quota from the API. One `wany_post_targets` row per destination account; `client_ref` makes double submits idempotent.
+  - `post.list` / `post.get` / `post.cancel` (queued only) / `post.retry` (failed + retryable only, while media still exists).
+- **Browser** (`web/src/posting.ts`): images → JPEG (center-cropped to 4:5–1.91:1 when an IG account is selected, max 1080×1920). MP4/MOV "faststart" (moov moved in front, chunk offsets rewritten, no re-encode). The same format rules run live before upload.
+- **Worker** (schedule every 2 min, timeout 100 s, so runs never overlap; max 12 targets per run):
+  - Instagram: container (carousel children first) → `FINISHED` → `media_publish` → permalink. A container already `PUBLISHED` (interrupted run) is recovered, never published twice.
+  - TikTok: `/business/video/publish/` or `/business/photo/publish/` → `/business/publish/status/` until `PUBLISH_COMPLETE` + `post_ids`.
+  - No automatic publish retries (avoids duplicate posts). Results are logged as `post_published` / `post_failed` events in the account's activity. Expired media (unused 6 h, or 3 days after the schedule) is deleted from the bucket.
+- **After publishing**, the status page (`#/posting?post=…`) opens the automation step: one form creates a rule per published account with `post_ids` = the new post ID (existing `rules.save`; the session is switched per account and restored afterwards).
+- **Permissions are opt-in**: `/webhook/wany-login?publish=1` adds `instagram_business_content_publish`; `/webhook/wany-tiktok-start?publish=1` adds `video.publish`. Normal connects are unchanged, so an unapproved scope never blocks regular sign-ins.
+- **Settings** (superadmin → Teknis → Media posting): `s3_endpoint`, `s3_region` (`auto`), `s3_bucket`, `s3_access_key`, `s3_secret_key`, `media_public_base` (e.g. `https://media.remot.in`, also whitelisted in the CSP in `web/vercel.json`), `post_max_video_mb`. `extra_origins` = extra origins allowed to call the API (e.g. a Vercel preview).
+- **Tests**:
+  - `node n8n/dev/test_posting.mjs`: 84 unit tests with fake IG/TikTok/S3 + real ffmpeg files.
+  - `python3 n8n/dev/test_post_api.py`: 32 end-to-end tests against local n8n + `n8n/dev/s3mock.mjs`, a bucket mock that verifies SigV4.
 
 ## Folders
 | Folder | Contents |

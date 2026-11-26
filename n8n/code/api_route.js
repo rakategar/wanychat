@@ -21,7 +21,9 @@ const gid = user ? String(user.group_id || user.uid) : '';
 
 // Tolak permintaan lintas situs (CSRF): browser selalu mengirim Origin untuk POST fetch
 const origin = String((req.headers || {}).origin || '');
-const sameOrigin = !origin || (base && origin === base);
+// extra_origins: domain tambahan yang boleh memanggil API (mis. preview Vercel), dipisah koma
+const extraOrigins = String(settings.extra_origins || '').split(',').map(s => s.trim().replace(/\/$/, '')).filter(Boolean);
+const sameOrigin = !origin || (base && origin === base) || extraOrigins.includes(origin);
 
 // Akun Instagram grup (urutan baris tabel = urutan yang sama dengan ekspresi node "Baca Rules Akun")
 const igRows = user ? $('Baca Akun Grup').all().map(i => i.json).filter(a => a && a.ig_user_id && a.access_token && groupOf(a) === gid) : [];
@@ -43,7 +45,7 @@ const myRules = ruleRows.filter(r => acc && String(r.account_id) === String(acc.
 const ttRules = ruleRows.filter(r => tt && String(r.account_id) === String(tt.open_id) && r.channel === 'tiktok');
 const isTt = p.type === 'tiktok';
 const publicPlan = (x) => ({ id: x.id, name: x.name, price: Number(x.price) || 0, dm: Number(x.dm) || 0, ai: Number(x.ai) || 0, rules: Number(x.rules) || 0,
-  followup: !!x.followup, persona: !!x.persona, accounts: Number(x.accounts) || 1, analytics: !!x.analytics, watermark: !!x.watermark });
+  followup: !!x.followup, persona: !!x.persona, accounts: Number(x.accounts) || 1, analytics: !!x.analytics, watermark: !!x.watermark, posts: Number(x.posts ?? 10) });
 const accountsLimit = Math.max(1, Number(plan.accounts) || 1);
 const billingView = () => ({
   plan: publicPlan(plan),

@@ -13,8 +13,10 @@ const s = {};
 for (const it of $('Baca Settings Callback').all()) if (it.json.key) s[it.json.key] = it.json.value ?? '';
 const base = String(s.public_url || '').replace(/\/$/, '');
 const G = 'https://graph.instagram.com/' + (s.graph_version || 'v23.0');
-const onboarding = String(cookies.wany_state || q.state || '').endsWith('-ob');
-const back = base + '/#/' + (onboarding ? 'onboarding' : 'settings');
+const st = String(cookies.wany_state || q.state || '');
+const onboarding = st.endsWith('-ob');
+const publish = st.endsWith('-pub');
+const back = base + '/#/' + (onboarding ? 'onboarding' : publish ? 'posting' : 'settings');
 const fail = (msg) => [{ json: { ok: false, location: back + '?error=' + encodeURIComponent(String(msg).slice(0, 200)) } }];
 
 if (q.error) return fail(q.error_description || q.error_reason || 'Izin Instagram dibatalkan');

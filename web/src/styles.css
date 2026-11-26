@@ -568,3 +568,28 @@ img.ch-logo { display: inline-block; vertical-align: middle; object-fit: contain
 .tt-shortcut:hover { background: var(--yellow); }
 .lp-official { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; margin: 18px 0 0; font-size: 14px; color: var(--muted); text-align: center; }
 .lp-official img { width: 26px; height: 26px; object-fit: contain; }
+
+/* ===== Posting multi-platform ===== */
+.dropzone { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 22px 16px; border: 3px dashed var(--ink); border-radius: var(--radius); background: rgba(255,255,255,.6); text-align: center; }
+.dropzone.on { background: var(--yellow); }
+.media-list { display: flex; flex-direction: column; gap: 10px; }
+.media-item { display: flex; align-items: center; gap: 12px; padding: 8px; border: var(--border-thin); border-radius: var(--radius-sm); background: var(--surface); min-width: 0; }
+.media-item.bad { background: #ffe3e3; }
+.media-item img, .media-item video { width: 64px; height: 64px; flex: none; object-fit: cover; border: var(--border-thin); border-radius: 4px; background: var(--blue); }
+.media-meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; word-break: break-word; }
+.err { color: #b3261e; font-weight: 600; }
+.dest { padding: 8px 10px; border: var(--border-thin); border-radius: var(--radius-sm); background: var(--surface); }
+.dest.on { background: var(--yellow); box-shadow: var(--shadow-sm); }
+.dest.off { background: #f3eee6; }
+.dest input[type=checkbox] { width: 18px; height: 18px; flex: none; accent-color: var(--ink); }
+.dest .avatar { width: 30px; height: 30px; flex: none; }
+.post-row { display: flex; align-items: center; gap: 14px; padding: 12px; cursor: pointer; font: inherit; color: inherit; width: 100%; }
+.post-row:hover { transform: translate(-1px, -1px); box-shadow: 6px 6px 0 var(--ink); }
+.post-thumb { width: 56px; height: 56px; flex: none; object-fit: cover; border: var(--border-thin); border-radius: 4px; background: var(--blue); display: grid; place-items: center; font-size: 22px; }
+.thumbs .post-thumb { width: 48px; height: 48px; }
+.target-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 2px solid rgba(17,17,17,.12); flex-wrap: wrap; }
+.target-row:last-child { border-bottom: 0; }
+.sub-block { padding: 14px; border: var(--border-thin); border-radius: var(--radius-sm); background: var(--paper); }
+.automation-step { border-color: var(--ink); background: #fffbe6; animation: pop .25s ease-out; }
+@media (max-width: 600px) { .media-item img, .media-item video { width: 52px; height: 52px; } .post-row { gap: 10px; } }
+.chip.on .ch-logo { background: #fff; border-radius: 50%; padding: 1px; }

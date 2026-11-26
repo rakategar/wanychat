@@ -3,6 +3,8 @@
 // Token akses berlaku 24 jam, refresh token 1 tahun. Semua respons: { code: 0, message, data }.
 const TT_API = 'https://business-api.tiktok.com/open_api/v1.3';
 const TT_SCOPES = 'user.info.basic,user.info.username,user.info.stats,user.info.profile,user.account.type,user.insights,video.list,video.insights,comment.list,comment.list.manage';
+// Izin posting diminta terpisah (tombol "Izinkan posting"): scope yang belum disetujui di app TikTok tidak memblokir koneksi biasa
+const TT_PUBLISH_SCOPE = 'video.publish';
 const ttReady = () => !!(settings.tiktok_app_id && settings.tiktok_secret);
 const ttRedirect = () => String(settings.tiktok_redirect_url || (String(settings.public_url || '').replace(/\/$/, '') + '/webhook/wany-tiktok-login'));
 
@@ -55,7 +57,7 @@ const ttHide = (openId, token, videoId, commentId, hide) => ttCall('POST', '/bus
 
 // Baris lengkap wany_tt_accounts (upsert menimpa semua kolom)
 const TT_FIELDS = ['open_id', 'username', 'display_name', 'avatar', 'access_token', 'token_expires_at', 'refresh_token',
-  'refresh_expires_at', 'token_refresh_error', 'owner_id', 'connected_at'];
+  'refresh_expires_at', 'token_refresh_error', 'owner_id', 'connected_at', 'scope'];
 function ttRow(a, fields) {
   const r = {};
   for (const k of TT_FIELDS) r[k] = a && a[k] !== undefined && a[k] !== null ? a[k] : '';

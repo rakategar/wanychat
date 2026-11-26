@@ -2,12 +2,13 @@
 // Paket langganan. Sumber kebenaran: setting "plans" (JSON, diubah dari dasbor superadmin); ini nilai bawaan.
 // dm = DM otomatis / bulan, ai = balasan AI / bulan (0 = tanpa AI), rules = jumlah automasi (0 = tanpa batas),
 // accounts = akun Instagram + TikTok per langganan (kuota dibagi bersama), analytics = dasbor analitik lead,
-// watermark = DM diberi tanda "via Wanychat" (promosi di paket gratis)
+// watermark = DM diberi tanda "via Wanychat" (promosi di paket gratis),
+// posts = posting multi-platform per bulan, dihitung per akun tujuan (0 = tanpa batas)
 const DEFAULT_PLANS = [
-  { id: 'free', name: 'Gratis', price: 0, dm: 100, ai: 0, rules: 3, followup: false, persona: false, accounts: 1, analytics: false, watermark: true },
-  { id: 'kreator', name: 'Kreator', price: 49000, dm: 1000, ai: 50, rules: 0, followup: true, persona: false, accounts: 1, analytics: false, watermark: false },
-  { id: 'pro', name: 'Pro', price: 99000, dm: 5000, ai: 1000, rules: 0, followup: true, persona: true, accounts: 2, analytics: false, watermark: false },
-  { id: 'bisnis', name: 'Bisnis', price: 249000, dm: 20000, ai: 5000, rules: 0, followup: true, persona: true, accounts: 5, analytics: true, watermark: false },
+  { id: 'free', name: 'Gratis', price: 0, dm: 100, ai: 0, rules: 3, followup: false, persona: false, accounts: 1, analytics: false, watermark: true, posts: 10 },
+  { id: 'kreator', name: 'Kreator', price: 49000, dm: 1000, ai: 50, rules: 0, followup: true, persona: false, accounts: 1, analytics: false, watermark: false, posts: 60 },
+  { id: 'pro', name: 'Pro', price: 99000, dm: 5000, ai: 1000, rules: 0, followup: true, persona: true, accounts: 2, analytics: false, watermark: false, posts: 300 },
+  { id: 'bisnis', name: 'Bisnis', price: 249000, dm: 20000, ai: 5000, rules: 0, followup: true, persona: true, accounts: 5, analytics: true, watermark: false, posts: 0 },
 ];
 const GRACE_MS = 3 * 24 * 3600 * 1000; // tenggang setelah masa aktif habis sebelum turun ke Gratis
 
@@ -16,8 +17,8 @@ function loadPlans(settings) {
     const p = JSON.parse(settings.plans || '');
     // Paket lama (sebelum ada field accounts/analytics/watermark) dilengkapi dari bawaan dengan id sama
     if (Array.isArray(p) && p.some(x => x && x.id === 'free')) return p.map(x => {
-      const d = DEFAULT_PLANS.find(y => y.id === x.id) || { accounts: 1, analytics: false, watermark: false };
-      return Object.assign({ accounts: d.accounts, analytics: d.analytics, watermark: d.watermark }, x);
+      const d = DEFAULT_PLANS.find(y => y.id === x.id) || { accounts: 1, analytics: false, watermark: false, posts: 10 };
+      return Object.assign({ accounts: d.accounts, analytics: d.analytics, watermark: d.watermark, posts: d.posts }, x);
     });
   } catch (e) { /* pakai bawaan */ }
   return DEFAULT_PLANS;
