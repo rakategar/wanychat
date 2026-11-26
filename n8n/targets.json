@@ -50,7 +50,8 @@
       "WanySuperAdmin01": "W4AypZ9iU6rWb2c4",
       "WanyAuth00000001": "SVGsLYk51eSzLdDw",
       "WanyTikTok000001": "lMAXW7RYjo547imP",
-      "WanyTikTokAuto01": "BogXCStl1JM4J0JN"
+      "WanyTikTokAuto01": "BogXCStl1JM4J0JN",
+      "WanyPosting00001": "LNn6n0bmw1PwW54b"
     },
     "tables": {
       "settings": "YMGfBdIgw7eOTcUb",
@@ -69,7 +70,10 @@
       "inbox": "CAszk39qSfgph4Tt",
       "users": "ZeW7k68ItCTOsaC3",
       "otp": "I8SkFmtlzVzM0Fx5",
-      "tt_accounts": "AJvmuhLGZMVAmIEX"
+      "tt_accounts": "AJvmuhLGZMVAmIEX",
+      "posts": "P6Z9OnQeadgViqzG",
+      "post_targets": "2NpueH1Mo8jE48Fd",
+      "media": "2tnvbXTDfIbID2F9"
     },
     "smtp": {
       "id": "toHrI2BzMojBewnm",
